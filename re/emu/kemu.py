@@ -83,6 +83,7 @@ class King:
         self.key_source = None     # called with no arguments to refill an empty script
         self.max_insns = 20_000_000_000   # per call; only a guard against endless loops
         self.on_hand = None        # callback(player) when draw_hand runs
+        self.consumed = []         # every poll answered: None (no key) or the char read
         for (seg, off), (_name, kind, n) in STUBS.items():
             code = (b'\xc2' if kind == 'ret' else b'\xca') + struct.pack('<H', n) if n else \
                 (b'\xc3' if kind == 'ret' else b'\xcb')
@@ -119,6 +120,7 @@ class King:
             self.keys += self.key_source()
         if self.keys and self.keys[0] is None:
             self.keys.pop(0)
+            self.consumed.append(None)
             return 0
         if not self.keys:
             raise RuntimeError('key script exhausted')
@@ -127,7 +129,9 @@ class King:
     def readkey(self, args):
         if not self.keys or self.keys[0] is None:
             raise RuntimeError('ReadKey without a scripted key')
-        return ord(self.keys.pop(0))
+        k = self.keys.pop(0)
+        self.consumed.append(k)
+        return ord(k)
 
     def draw_hand(self, args):
         if self.on_hand: self.on_hand(args[0])
@@ -191,8 +195,26 @@ class King:
         return mu.reg_read(UC_X86_REG_AX)
 
 
+PLAY_CARD = 0x6c02
+ITEMS_LEFT, LEADER = 0x07b4, 0x07b2
+NO_HEART_LEAD = {1, 5, 6}
+
+
+def suit(c): return c // 13
+
+
+class RuleError(AssertionError):
+    pass
+
+
 class Game(King):
-    """A game as KING2's main plays it after the login: 56 deals."""
+    """A game as KING2's main plays it after the login: 56 deals.
+
+    `play_one_deal` returns the deal's event record and checks the rules on the way (hands are
+    a permutation of the 32 cards, plays come from the hand and follow suit, no hearts lead in
+    contracts 1, 5, 6 while other suits are held, the highest card of the led suit leads next,
+    no items left at the end).
+    """
 
     def setup(self, seed):
         self.w32(RANDSEED, seed)
@@ -207,11 +229,56 @@ class Game(King):
         return sum(self.r16(GAMES_LEFT + 30 * p) for p in range(1, 5))
 
     def play_one_deal(self):
+        rec = {'seed': self.ru32(RANDSEED), 'dealer': self.r16(DEALER)}
+        self.consumed = []
+        self.on_hand = None
         self.call(DEAL)
+        hands = {p: self.hand(p) for p in range(1, 5)}
+        deck = sorted(c for h in hands.values() for c in h)
+        if deck != sorted(r * 13 + k for r in range(4) for k in range(5, 13)) or \
+                any(len(h) != 8 for h in hands.values()):
+            raise RuleError(f'bad deal {hands}')
+        rec.update(hands={str(p): h for p, h in hands.items()}, game=self.r16(DEAL_NO),
+                   declarer=rec['dealer'] % 4 + 1, contract_keys=self.consumed, seed_play=self.ru32(RANDSEED))
+        self.consumed = []
+        game = rec['game']
+        cur = {p: list(h) for p, h in hands.items()}
+        trick = []
+        tricks = []
+        def on_hand(p):
+            nonlocal trick
+            card = self.r16(HANDS + 20 * p + 18)
+            h = cur[p]
+            if card not in h: raise RuleError(f'player {p} played {card} not in {h}')
+            if trick:
+                led = suit(trick[0][1])
+                if suit(card) != led and any(suit(c) == led for c in h):
+                    raise RuleError(f'player {p} did not follow suit: {card} {h}')
+            elif game % 7 in NO_HEART_LEAD and suit(card) == 3 and any(suit(c) != 3 for c in h):
+                raise RuleError(f'player {p} led a heart in game {game}: {card} {h}')
+            i = h.index(card)
+            if self.hand(p) != h[:i] + h[i + 1:]: raise RuleError(f'hand of {p} not compacted')
+            del h[i]
+            trick.append((p, card))
+            if len(trick) == 4:
+                led = suit(trick[0][1])
+                win = max((c, q) for q, c in trick if suit(c) == led)[1]
+                tricks.append({'plays': trick, 'winner': win})
+                trick = []
+        self.on_hand = on_hand
         self.call(PLAY_DEAL)
+        self.on_hand = None
+        if trick: raise RuleError(f'unfinished trick {trick}')
+        if self.r16(ITEMS_LEFT) != 0: raise RuleError('items left at the end of the deal')
+        for a, b in zip(tricks, tricks[1:]):
+            if b['plays'][0][0] != a['winner']: raise RuleError(f'{a} won but {b} led')
+        rec.update(tricks=tricks, play_keys=self.consumed,
+                   deal_score=[self.r16(DEAL_SCORE + 2 * p) for p in range(1, 5)])
         self.call(DEAL_SUMMARY)
         self.w16(DEALER, self.r16(DEALER) + 1)
         for p in range(1, 5): self.w16(DEAL_SCORE + 2 * p, 0)
+        rec.update(totals=self.totals(), seed_end=self.ru32(RANDSEED))
+        return rec
 
     def totals(self):
         return [self.r16(TOTAL_SCORE + 2 * p) for p in range(1, 5)]

@@ -17,3 +17,4 @@ re/ghidra/*_decomp.c
 
 # Art decoded from your own original files (never committed)
 assets-local/
+re/emu/logs/
