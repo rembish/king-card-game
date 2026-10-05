@@ -42,7 +42,8 @@ export async function readToken(secret, token, now = Date.now()) {
 
 // names as the game accepts them: up to 12 Latin or Cyrillic letters, digits, punctuation
 export function cleanName(name) {
-  const s = String(name || '').normalize('NFC').trim();
+  // the game's font has no Ё/ё: they are typed as Е/е, and so are names here
+  const s = String(name || '').normalize('NFC').trim().replace(/Ё/g, 'Е').replace(/ё/g, 'е');
   const chars = [...s];
   if (!chars.length || chars.length > 12) return null;
   return chars.every((c) => /[\x20-\x7e]/.test(c) || /[А-яЁё]/.test(c)) ? s : null;

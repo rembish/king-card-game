@@ -34,7 +34,8 @@ test('tokens are signed, expire, and carry the seed', async () => {
 
 test('names', () => {
   assert.equal(cleanName(' Саша '), 'Саша');
-  assert.equal(cleanName('Ёжик-123'), 'Ёжик-123');
+  assert.equal(cleanName('Ёжик-123'), 'Ежик-123');
+  assert.equal(cleanName('Алёна'), 'Алена');
   assert.equal(cleanName(''), null);
   assert.equal(cleanName('x'.repeat(13)), null);
   assert.equal(cleanName('日本'), null);

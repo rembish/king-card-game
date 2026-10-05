@@ -773,11 +773,21 @@ static void text_input(const char *t)
     for (const char *s = t; *s;) {
         int len = (*s & 0x80) == 0 ? 1 : (*s & 0xe0) == 0xc0 ? 2 : 3;
         unsigned c0 = (unsigned char)s[0], c1 = (unsigned char)s[1];
+        /* the original's font has no Ё/ё (its 0xF0/0xF1 are IBM's ≡ and ±): е, as typed then */
+        const char *src = s;
+        char yo[2];
+        if (len == 2 && ((c0 == 0xd0 && c1 == 0x81) || (c0 == 0xd1 && c1 == 0x91))) {
+            yo[0] = (char)0xd0;
+            yo[1] = (char)(c1 == 0x81 ? 0x95 : 0xb5); /* Е, е */
+            src = yo;
+            c0 = 0xd0;
+            c1 = (unsigned char)yo[1];
+        }
         int ok = (c0 >= 0x20 && c0 < 0x7f) || (c0 == 0xd0 && (c1 >= 0x81 && c1 <= 0xbf)) ||
                  (c0 == 0xd1 && (c1 >= 0x80 && c1 <= 0x91));
         size_t used = strlen(name_buf);
         if (ok && res_text_len(name_buf) < CLUB_NAME && used + (size_t)len < sizeof name_buf) {
-            memcpy(name_buf + used, s, (size_t)len);
+            memcpy(name_buf + used, src, (size_t)len);
             name_buf[used + (size_t)len] = 0;
         }
         s += len;
