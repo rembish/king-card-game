@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Recorded games (tests/fixtures, recorded from the original)
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, sys
+          bad = 0
+          for g in json.load(open('tests/fixtures/games.json')):
+              want = ' '.join(['0'] + [str(t) for t in g['totals']])
+              got = subprocess.run(['build/verify', str(g['seed']), g['polls']], capture_output=True, text=True).stdout.strip()
+              rep = subprocess.run(['build/king', '--replay', str(g['seed']), g['polls']], capture_output=True, text=True).stdout.split('\n')
+              ok = got == want and rep[0] == ' '.join(str(t) for t in g['totals']) and rep[1] == g['polls']
+              print(g['seed'], 'OK' if ok else f'FAIL {got} / {rep[0]}')
+              bad += not ok
+          sys.exit(bad)
+          PY
