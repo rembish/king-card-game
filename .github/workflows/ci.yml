@@ -63,7 +63,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build (Emscripten: the game and the server's core)
+      - name: Build (Emscripten), the game and the server's core
         run: cloudflare/build.sh
       - name: The server's tests
         run: node --test cloudflare/test.mjs
