@@ -105,39 +105,65 @@ password, pick 3 of 12 partners), then 14 deals `deal_no` (`ds:0746`) = 0..13, t
 
 ## AI (`ai_choose_card` 0e88, `ai_search` 0afd, `ai_trick_value` 0901)
 
-The computer sees every hand (the partner cards say "ОН ВСЕГДА МУХЛЮЕТ").
+Read from the disassembly (KING2 addresses; the routines are byte-identical in KING except for
+DGROUP offsets). Ghidra's decompile is misleading here: `ai_search` is a nested procedure and
+reads its parent's locals through the static link.
 
-`ai_choose_card(p)`:
+**State.** All three take a value parameter `State = array[1..4] of array[0..9] of integer`
+(80 bytes, copied on entry): row `p` = `[0]` card count, `[1..8]` cards in hand order, `[9]` an
+extra slot. `ai_choose_card` is passed `ds:070e` (the real hands, where `[9]` is the card on
+the table), copies it and **zeroes `[9]` of every row**; from then on `[9]` is used as each
+player's running score in the search.
 
-1. Search depth in tricks from `trick_no` (`ds:0740`): tricks 0..3 → 2, 4..5 → 3, 6 → 2,
-   7..8 → 1 **[verify]** the exact meaning of a depth (the search stops when the number of
-   tricks completed inside the search equals it).
-2. With one card left, play it.
-3. Leading in contracts {1, 5, 6}: only non-hearts are candidates if the hand has any
-   (set at `1000:0e68`).
-4. Following: take the highest card of the led suit. If there is one and it is **lower than
-   the current best card of the trick, play it at once** (no search: duck with the highest
-   card that cannot win). If there is one otherwise, only led-suit cards are candidates.
-5. Otherwise run `ai_search` for each candidate in hand order and keep the lowest value;
-   ties keep the first.
+**`ai_choose_card(p)`** (`retf 6`: state pointer, `p`):
 
-`ai_search` is a plain minimax over all four real hands: at player `p`'s turns the value is
-minimised, at everyone else's maximised (paranoid). It applies the same follow-suit and
-no-hearts-lead rules, tracks the trick winner, and at the end of each trick adds
-`ai_trick_value` to the winner's running score. It returns `p`'s score. The whole state
-(80 bytes) is copied per node.
+1. `depth` by `trick_no` (`ds:07b8`, tricks completed in this deal, 0..7): 0..3 → 2, 4..5 → 3,
+   6 → 2, 7 → 1.
+2. One card left → play it (returns 1).
+3. Leading (`cards_in_trick` `ds:07ba` = 0) in contracts {1, 5, 6} (set `cs:0e68`): if the hand
+   has any non-heart, `no_hearts` = 1.
+4. Following: `hi` = the highest card of the led suit (suit of `trick_best mod 256`), first index
+   on ties is irrelevant (cards are unique). If there is one and `trick_best mod 256 > hi`, play
+   it at once. If there is one, `must_follow` = 1.
+5. For `i = 1..count`, candidates = not (`no_hearts` and heart) and not (`must_follow` and
+   off-suit): `v = ai_search(trick_best, 0, cards_in_trick, p, i, state)`; keep the first `i`
+   with the smallest `v` (start 1000, strict `<`).
 
-`ai_trick_value` (`0901`) is **not** the real scoring (`score_trick`, `1740`). The port must
-copy it as it is:
-- the prices are fixed in code (20 / 20 / 20 / 40 / 160), not `item_price`;
-- contract 4 ("2 ПОСЛЕДНИЕ") is valued as 20 for *every* trick, not 80 for tricks 7 and 8;
-- contract 6 (ералаш) has no last-two part (20 per trick, 20 per heart, 20 per boy, 40 per
-  queen, 160 for the K♥);
-- the value is positive in deals 0..6 and negated in 7..13, so `p` always minimises.
+**`ai_search(best, tricks, ncards, q, i, state)`** (`retf 0x10`, static link = `ai_choose_card`'s
+frame, which gives `depth` at `[link - 0x62]` and the root player at `[link + 0x0a]`):
 
-Some branches test `SetIn` results that Ghidra drops (`bVar = true` artifacts); read those in
-the disassembly. The choice of partner does not affect play **[verify]** (no reference to
-`ds:05e4..05e8` in the AI).
+1. Play card `i` of `q`: if `best = 0` it becomes `card + 256q`; else if it is the led suit and
+   higher than `best mod 256` it replaces it (`best and $ff` here). Remove it from the hand
+   (count−1, shift down).
+2. `ncards + 1`; on 4: `w = best shr 8`, `state[w][9] += ai_trick_value(state)`, `ncards = 0`,
+   `tricks + 1`, `best = 0`.
+3. If `tricks = depth` → return `state[root][9]`. (The current trick counts as the first; so
+   depth `d` looks at the current trick and `d - 1` more.)
+4. Next player: after a finished trick the winner `w`; otherwise `q mod 4 + 1`, and if that
+   player holds the led suit only cards of that suit are candidates. Leading in {1, 5, 6} (set
+   `cs:0add`) excludes hearts when the hand has another suit.
+5. Recurse over the candidates in hand order; the root player takes the minimum (start 1000,
+   strict `<`), every other player the maximum (start −1000, strict `>`). Return it.
+
+**`ai_trick_value(state)`** (`retf 4`) looks at `state[p][9]` for p = 1..4 *as if they were the
+four cards of the trick* — but in the search they are the running scores (0 at the root), and the
+cards just played are never stored. The value is therefore:
+
+| Contract | Value (before the sign) |
+|----------|-------------------------|
+| 0, 4     | 20 |
+| 1        | 20 x #{p : score[p] > 39} |
+| 2        | 20 x #{p : score[p] mod 13 in [9, 11]} (Pascal `mod`, sign of the dividend) |
+| 3        | 40 x #{p : score[p] mod 13 = 10} |
+| 5        | 160 x #{p : score[p] = 50} |
+| 6        | 20 + all four of the above added |
+
+negated when `deal_no >= 7`. Since every score starts at 0, contracts 1, 2, 3 and 5 always
+value 0 and the computer simply plays its **first candidate in hand order** (unless rule 4's
+shortcut applies). Confirmed on the emulator logs (seeds 1-3): 1426 of 1426 searched decisions
+in contracts 1, 2, 3, 5 were the first candidate; all 1015 shortcut predictions held. In 0 and 4
+it plays a real trick-avoiding (or, in 7 and 11, trick-taking) search; in 6 a skewed one. The
+port must keep all of this: it is how the original plays.
 
 ## Login and KING.OVL
 
