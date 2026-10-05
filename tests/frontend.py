@@ -34,6 +34,11 @@ if __name__ == '__main__':
             err = f'totals {out[0]}, original {want}'
         elif out[1] != script:
             err = 'poll log differs from the polls fed'
+        if err is None:  # the server's check (kg_replay) on the same polls
+            v = subprocess.run([os.path.join(os.path.dirname(exe), 'verify'), str(log['seed']), script],
+                               capture_output=True, text=True)
+            if v.stdout.split() != ['0'] + [str(t) for t in want]:
+                err = f'kg_replay: {v.stdout.strip()} {v.stderr.strip()}'
         print(os.path.basename(p), 'OK' if err is None else 'FAIL: ' + err)
         bad += err is not None
     sys.exit(1 if bad else 0)
