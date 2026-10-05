@@ -46,6 +46,10 @@ enum { KG_TRICKS, KG_HEARTS_C, KG_BOYS, KG_GIRLS, KG_LAST_TWO, KG_KING, KG_ALL }
 
 /* keyboard polls */
 enum { KG_KEY_NONE, KG_KEY_SPACE, KG_KEY_LEFT, KG_KEY_RIGHT, KG_KEY_UP, KG_KEY_DOWN, KG_KEY_OTHER };
+/* Port addition for the mouse and touch: put the cursor on card i (1..8) or game g (0..13) and
+ * press Space, in one poll. The original moved its cursor with the mouse over several polls;
+ * the random numbers depend only on the number of polls, not on where the cursor is. */
+#define KG_KEY_PICK(i) (0x100 + (i))
 
 /* Rows of words as the original keeps them (ds:06fa + 20p): [0] count, [1..8] cards in hand
  * order, [9] the card on the table. The computer's hands stay in deal order; the human's is

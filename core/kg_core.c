@@ -117,6 +117,11 @@ void kg_contract_begin(kg_game *g) { g->grid_half = g->grid_row = 0; }
 /* choose_contract (57bc) for the human: one pass of its loop */
 int kg_contract_poll(kg_game *g, int key)
 {
+    if (key >= KG_KEY_PICK(0) && key < KG_KEY_PICK(KG_GAMES)) {
+        g->grid_half = (int16_t)((key - KG_KEY_PICK(0)) / 7);
+        g->grid_row = (int16_t)((key - KG_KEY_PICK(0)) % 7);
+        key = KG_KEY_SPACE;
+    }
     if (key == KG_KEY_LEFT && g->grid_half > 0) g->grid_half--;
     if (key == KG_KEY_RIGHT && g->grid_half < 1) g->grid_half++;
     if (key == KG_KEY_UP && g->grid_row > 0) g->grid_row--;
@@ -259,6 +264,10 @@ int kg_human_poll(kg_game *g, int key)
     if (g->blink > 0) g->blink++;
     if (g->blink > 11) g->blink = 0;
     if (g->blink == 0 && kg_random(g, 20) == 19) g->blink = 1;
+    if (key > KG_KEY_PICK(0) && key <= KG_KEY_PICK(h[0])) {
+        g->cursor = (int16_t)(key - KG_KEY_PICK(0));
+        key = KG_KEY_SPACE;
+    }
     if (key == KG_KEY_LEFT && g->cursor - 1 > 0) g->cursor--;
     if (key == KG_KEY_RIGHT && g->cursor + 1 < h[0] + 1) g->cursor++;
     if (key != KG_KEY_SPACE) return 0;
