@@ -7,7 +7,13 @@ queens «девочки», the last two tricks, the king of hearts, all of them 
 seven where you must. This repo is a reverse-engineered port of the full variant, `KING2.EXE`,
 to portable C + SDL2: it runs natively and in a browser via WebAssembly.
 
-**Play in the browser:** <https://king.rembi.sh/> (planned).
+**Play in the browser:** <https://king.rembi.sh/> — with the club's global table of millionaires.
+
+[<img src="https://github.com/rembish/king-card-game/releases/download/v0.1.0/king.gif" width="480" alt="Choosing partners, the deal, and a game of «мальчики»">](https://github.com/rembish/king-card-game/releases/download/v0.1.0/king.mp4)
+
+*Click for the video with the PC speaker. Made with `tools/clips.sh` from your own copy of the
+game (the demo plays your seat at a human's pace); the clips live in the releases, never in
+the repository.*
 
 The goal has two halves:
 
@@ -53,8 +59,14 @@ c97a2a69ebe88577d7453408bf92a1739ed6d7b5a8c010f1d3078b5b9c9dd364  KING.FNT   fon
 
 You join the club under a name (no password). Your «лицевой счёт» grows or shrinks with every
 game, and after it the society column «СВЕТСКАЯ ХРОНИКА» reports on your evening and lists «НАШИ
-МИЛЛИОНЕРЫ». The club lives in the user data folder (`~/.local/share/King/King/` on Linux) or
-in the browser's storage.
+МИЛЛИОНЕРЫ». Natively the club lives in the user data folder (`~/.local/share/King/King/` on
+Linux).
+
+On king.rembi.sh the club is global (`cloudflare/`, Cloudflare Pages Functions and KV): names
+are unique (the first browser to take one keeps it), each game is dealt with a seed the server
+signs, and at the end the browser sends its keyboard polls. The server replays the whole game
+with the same C core compiled to WebAssembly and books the total it gets itself, so a score
+cannot be typed in — only played (the computer partners cheat; the humans may try to).
 
 The three partners are a matter of taste: who you pick does not change how they play.
 
@@ -104,6 +116,17 @@ evaluation reads the running scores where it means to read the cards of the tric
 boys, queens and the king they therefore just play their first legal card; only in tricks,
 the last two and «все подряд» does the search matter. The port plays exactly like that.
 Findings and addresses are in [`re/NOTES.md`](re/NOTES.md).
+
+## The server
+
+```sh
+cloudflare/build.sh                  # the web build into cloudflare/public, the core into lib/core.wasm
+node --test cloudflare/test.mjs      # replays the recorded games in tests/fixtures, tokens, names
+cd cloudflare && npx wrangler pages dev public --kv CLUB   # needs KING_SECRET in .dev.vars
+```
+
+Pushes to `main` deploy through GitHub Actions (`.github/workflows/pages.yml`, with the
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets).
 
 ## Tooling
 
