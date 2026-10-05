@@ -81,6 +81,7 @@ class King:
         mu.mem_write(CS * 16, bytes(img))
         self.keys = []             # script: a char (str of length 1) or None = one idle poll
         self.key_source = None     # called with no arguments to refill an empty script
+        self.max_insns = 20_000_000_000   # per call; only a guard against endless loops
         self.on_hand = None        # callback(player) when draw_hand runs
         for (seg, off), (_name, kind, n) in STUBS.items():
             code = (b'\xc2' if kind == 'ret' else b'\xca') + struct.pack('<H', n) if n else \
@@ -182,7 +183,7 @@ class King:
         mu.reg_write(UC_X86_REG_BP, 0)
         mu.reg_write(UC_X86_REG_CS, seg)
         self.error = None
-        mu.emu_start(seg * 16 + off, SENTINEL[0] * 16 + SENTINEL[1], count=500_000_000)
+        mu.emu_start(seg * 16 + off, SENTINEL[0] * 16 + SENTINEL[1], count=self.max_insns)
         if self.error: raise self.error
         here = mu.reg_read(UC_X86_REG_CS) * 16 + mu.reg_read(UC_X86_REG_IP)
         if here != SENTINEL[0] * 16 + SENTINEL[1]:
