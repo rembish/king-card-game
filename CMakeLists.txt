@@ -8,12 +8,17 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
-if(NOT MSVC)
-  add_compile_options(-Wall -Wextra)
-endif()
-
 add_library(kgcore STATIC core/kg_core.c core/kg_replay.c)
 target_include_directories(kgcore PUBLIC core)
+
+option(KG_WERROR "Treat warnings as errors (CI)" OFF)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(kgcore PRIVATE -Wall -Wextra -Wpedantic -Wshadow -Wconversion
+    -Wsign-conversion -Wcast-qual -Wstrict-prototypes -Wmissing-prototypes)
+  if(KG_WERROR)
+    target_compile_options(kgcore PRIVATE -Werror)
+  endif()
+endif()
 
 # Replays a game from a seed and the keyboard polls; tests/difftest.py checks it against the
 # original's logs from re/emu/record.py.
@@ -40,4 +45,14 @@ else()
   if(TARGET SDL2::SDL2main)
     target_link_libraries(king PRIVATE SDL2::SDL2main)
   endif()
+endif()
+
+# The frontend and the test tools: the usual warnings (the core has stricter ones above)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  foreach(t king replay verify botpolls)
+    target_compile_options(${t} PRIVATE -Wall -Wextra -Wpedantic -Wshadow)
+    if(KG_WERROR)
+      target_compile_options(${t} PRIVATE -Werror)
+    endif()
+  endforeach()
 endif()

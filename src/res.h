@@ -18,12 +18,12 @@ enum {
     SPR_MARS = 60,     /* marks an unplayed "take" game in the contract grid */
     SPR_SNICKERS = 61, /* marks an unplayed "don't take" game */
     SPR_HAND_BLINK = 62,
-    SPR_LOGO_KP = 64,  /* Komsomolskaya Pravda */
-    SPR_CORNER = 65,   /* 65, 66: small ornaments */
+    SPR_LOGO_KP = 64, /* Komsomolskaya Pravda */
+    SPR_CORNER = 65,  /* 65, 66: small ornaments */
     SPR_LOGO_KING = 67,
     SPR_FACES = 68,
     SPR_BILL = 69,
-    SPR_FLAME = 70,    /* 70, 71 */
+    SPR_FLAME = 70, /* 70, 71 */
 };
 #define SPR_NONE 16 /* "no transparent colour" */
 
@@ -48,11 +48,11 @@ void res_sprite(int id, int x, int y, int transparent);
 void res_sprite_part(int id, int sx, int sy, int w, int h, int x, int y, int transparent);
 
 /* UTF-8 text in the original's fonts (CP866), `advance` pixels per character (8 normally) */
-void res_text(int font, int x, int y, int ega, int advance, const char *utf8);
+void res_text(int font, int x, int y, int ega, int advance, const char *s);
 void res_textf(int font, int x, int y, int ega, int advance, const char *fmt, ...);
-int res_text_len(const char *utf8); /* characters */
+int res_text_len(const char *s); /* characters */
 /* text with a shadow one pixel right and down, as the game draws its headings */
-void res_text_shadow(int font, int x, int y, int ega, int shadow, int advance, const char *utf8);
+void res_text_shadow(int font, int x, int y, int ega, int shadow, int advance, const char *s);
 
 void res_fill(int x, int y, int w, int h, int ega);
 void res_frame(int x, int y, int w, int h, int ega);

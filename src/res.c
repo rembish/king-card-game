@@ -15,21 +15,21 @@ typedef struct {
 
 static sprite spr[NSPR];
 static unsigned char fonts[3][256 * 14];
-static const int font_rows[3] = {6, 8, 14};
+static const int font_rows[3] = { 6, 8, 14 };
 static SDL_Renderer *ren;
 static SDL_Texture *tex[NSPR][NTRANS];
 static SDL_Texture *font_tex[3];
 static char err[256];
 
 /* EGA palette registers (6-bit rgbRGB) after init_graphics: 4 = $14, 5 = $27, 6 = $2e */
-static int pal[16] = {0, 1, 2, 3, 0x14, 0x27, 0x2e, 7, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3b, 0x3e, 0x3f};
+static int pal[16] = { 0, 1, 2, 3, 0x14, 0x27, 0x2e, 7, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3b, 0x3e, 0x3f };
 
 SDL_Color res_color(int ega)
 {
     int v = pal[ega & 15];
     int r = ((v >> 2) & 1) * 2 + ((v >> 5) & 1), g = ((v >> 1) & 1) * 2 + ((v >> 4) & 1);
     int b = (v & 1) * 2 + ((v >> 3) & 1);
-    return (SDL_Color){(Uint8)(r * 85), (Uint8)(g * 85), (Uint8)(b * 85), 255};
+    return (SDL_Color){ (Uint8)(r * 85), (Uint8)(g * 85), (Uint8)(b * 85), 255 };
 }
 
 void res_set_palette(int index, int ega6)
@@ -67,7 +67,7 @@ int res_load(const unsigned char *lib, size_t lib_len, const unsigned char *fnt,
     for (int k = 0; k < NSPR; k++) {
         size_t size = (size_t)lib[1 + k] * 128;
         free(spr[k].px);
-        spr[k] = (sprite){0, 0, NULL};
+        spr[k] = (sprite){ 0, 0, NULL };
         if (!size) continue;
         if (off + size > lib_len) {
             snprintf(err, sizeof err, "KING.LIB: truncated");
@@ -92,7 +92,7 @@ int res_load(const unsigned char *lib, size_t lib_len, const unsigned char *fnt,
             }
             p = row_end;
         }
-        spr[k] = (sprite){w, h, px};
+        spr[k] = (sprite){ w, h, px };
         off += size;
     }
     return 0;
@@ -106,7 +106,7 @@ static unsigned char *slurp(const char *dir, const char *name, size_t *len)
         up[i] = (char)(name[i] >= 'a' && name[i] <= 'z' ? name[i] - 32 : name[i]);
         lo[i] = (char)(name[i] >= 'A' && name[i] <= 'Z' ? name[i] + 32 : name[i]);
     }
-    const char *variants[2] = {up, lo};
+    const char *variants[2] = { up, lo };
     for (int v = 0; v < 2; v++) {
         snprintf(path, sizeof path, "%s/%s", dir, variants[v]);
         FILE *f = fopen(path, "rb");
@@ -183,7 +183,7 @@ void res_sprite(int id, int x, int y, int transparent)
 {
     SDL_Texture *t = sprite_tex(id, transparent);
     if (!t) return;
-    SDL_Rect d = {x, y, spr[id].w, spr[id].h};
+    SDL_Rect d = { x, y, spr[id].w, spr[id].h };
     SDL_RenderCopy(ren, t, NULL, &d);
 }
 
@@ -191,7 +191,7 @@ void res_sprite_part(int id, int sx, int sy, int w, int h, int x, int y, int tra
 {
     SDL_Texture *t = sprite_tex(id, transparent);
     if (!t) return;
-    SDL_Rect s = {sx, sy, w, h}, d = {x, y, w, h};
+    SDL_Rect s = { sx, sy, w, h }, d = { x, y, w, h };
     SDL_RenderCopy(ren, t, &s, &d);
 }
 
@@ -237,7 +237,7 @@ void res_text(int font, int x, int y, int ega, int advance, const char *s)
     int rows = font_rows[font];
     while (*s) {
         int g = cp866(&s);
-        SDL_Rect src = {g * 8, 0, 8, rows}, dst = {x, y, 8, rows};
+        SDL_Rect src = { g * 8, 0, 8, rows }, dst = { x, y, 8, rows };
         SDL_RenderCopy(ren, t, &src, &dst);
         x += advance;
     }
@@ -263,7 +263,7 @@ void res_fill(int x, int y, int w, int h, int ega)
 {
     SDL_Color c = res_color(ega);
     SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
-    SDL_Rect r = {x, y, w, h};
+    SDL_Rect r = { x, y, w, h };
     SDL_RenderFillRect(ren, &r);
 }
 
@@ -271,7 +271,7 @@ void res_frame(int x, int y, int w, int h, int ega)
 {
     SDL_Color c = res_color(ega);
     SDL_SetRenderDrawColor(ren, c.r, c.g, c.b, 255);
-    SDL_Rect r = {x, y, w, h};
+    SDL_Rect r = { x, y, w, h };
     SDL_RenderDrawRect(ren, &r);
 }
 

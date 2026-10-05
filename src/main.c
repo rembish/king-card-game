@@ -17,7 +17,7 @@
 #include "res.h"
 #include "store.h"
 
-#define SCALE 3 /* the 640x350 screen is drawn 3x, then stretched to 4:3 */
+#define SCALE   3 /* the 640x350 screen is drawn 3x, then stretched to 4:3 */
 #define POLL_MS 30
 
 enum { SC_NOFILES, SC_TITLE, SC_NAME, SC_PARTNERS, SC_TABLE, SC_OVER };
@@ -65,8 +65,8 @@ static size_t npolls, polls_cap;
 /* what is on the screen */
 static int16_t hx[KG_HAND + 1]; /* x of each card in the human's hand */
 static int16_t table_card[5];
-static int dealt;              /* cards shown dealt so far */
-static int deal_start;         /* G.dealer before the deal */
+static int dealt;      /* cards shown dealt so far */
+static int deal_start; /* G.dealer before the deal */
 static int decl;
 static struct {
     int card, x0, y0, x1, y1, face;
@@ -82,25 +82,25 @@ static int result_wait; /* the game is being booked */
 static const char *net_note;
 /* the end screen's table: the club's richest, the global club's when it answered */
 static struct {
-    char name[CLUB_NAME * 2 + 1];
     long balance;
     unsigned games;
+    char name[CLUB_NAME * 2 + 1];
 } rows[9];
 static int nrows;
 
 /* seats: 1 left, 2 top, 3 right, 4 the human (from ds:0004.. of KING2) */
-static const int hand_x[5] = {0, 12, 296, 492, 0}, hand_y[5] = {0, 115, 45, 115, 280};
-static const int tab_x[5] = {0, 242, 294, 346, 294}, tab_y[5] = {0, 150, 120, 150, 180};
-static const int face_x[5] = {0, 16, 196, 544, 0}, face_y[5] = {0, 10, 2, 10, 0};
+static const int hand_x[5] = { 0, 12, 296, 492, 0 }, hand_y[5] = { 0, 115, 45, 115, 280 };
+static const int tab_x[5] = { 0, 242, 294, 346, 294 }, tab_y[5] = { 0, 150, 120, 150, 180 };
+static const int face_x[5] = { 0, 16, 196, 544, 0 }, face_y[5] = { 0, 10, 2, 10, 0 };
 #define DECK_X 294
 #define DECK_Y 145
 
-static const char *partner_names[12] = {"Винни Пух", "Кролик", "Иа-Иа",   "Пятачок", "Фрекен Бок", "Багира",
-                                        "Сова",      "Оля",    "Мишка",   "Башуров", "Карлсон",    "Борька"};
-static const char *contract_rows[7] = {"     ВЗЯТКИ", "      ЧЕРВИ", "   МАЛЬЧИКИ", "    ДЕВОЧКИ",
-                                       "2 ПОСЛЕДНИЕ", "       КИНГ", " ВСЕ ПОДРЯД"};
-static const char *contract_names[7] = {"ВЗЯТКИ", "ЧЕРВЕЙ", "МАЛЬЧИКОВ", "ДЕВОЧЕК",
-                                        "2 ПОСЛЕДНИЕ", "КИНГА", "ВСЕ ПОДРЯД"};
+static const char *partner_names[12] = { "Винни Пух", "Кролик", "Иа-Иа", "Пятачок", "Фрекен Бок", "Багира",
+                                         "Сова",      "Оля",    "Мишка", "Башуров", "Карлсон",    "Борька" };
+static const char *contract_rows[7] = { "     ВЗЯТКИ", "      ЧЕРВИ", "   МАЛЬЧИКИ", "    ДЕВОЧКИ",
+                                        "2 ПОСЛЕДНИЕ", "       КИНГ", " ВСЕ ПОДРЯД" };
+static const char *contract_names[7] = { "ВЗЯТКИ",      "ЧЕРВЕЙ", "МАЛЬЧИКОВ", "ДЕВОЧЕК",
+                                         "2 ПОСЛЕДНИЕ", "КИНГА",  "ВСЕ ПОДРЯД" };
 
 static void set_phase(int p)
 {
@@ -125,14 +125,23 @@ static void log_poll(int key)
 {
     if (npolls + 2 > polls_cap) {
         polls_cap = polls_cap ? polls_cap * 2 : 1 << 16;
-        polls = realloc(polls, polls_cap);
-        if (!polls) {
+        char *grown = realloc(polls, polls_cap);
+        if (!grown) {
             fprintf(stderr, "king: out of memory\n");
             exit(1);
         }
+        polls = grown;
     }
     polls[npolls++] = kg_poll_token(key);
     polls[npolls] = 0;
+}
+
+static uint32_t demo_seed; /* the demo's own choices (not the game's RNG) */
+
+static int demo_rand(int n)
+{
+    demo_seed = demo_seed * 1103515245u + 12345u;
+    return (int)((demo_seed >> 16) % (uint32_t)n);
 }
 
 /* the key for one poll of the human's loops */
@@ -143,7 +152,7 @@ static int poll_key(void)
         think = 0;
         if (ph == PH_CONTRACT_HUMAN) {
             int k;
-            do k = rand() % KG_GAMES;
+            do k = demo_rand(KG_GAMES);
             while (G.played[KG_HUMAN][k]);
             return KG_KEY_PICK(k);
         }
@@ -248,7 +257,7 @@ static void draw_panel(void)
     int price = G.price < 0 ? -G.price : G.price;
     if (G.deal_no % 7 == 6) price = 960;
     snprintf(l3, sizeof l3, "%s%d$", G.deal_no < 7 ? "-" : "+", price);
-    const char *l[3] = {l1, l2, l3};
+    const char *l[3] = { l1, l2, l3 };
     for (int k = 0; k < 3; k++)
         res_text_shadow(FONT_14, 73 - res_text_len(l[k]) * 5, 258 + k * 15, 13, 0, 10, l[k]);
 }
@@ -278,7 +287,8 @@ static void draw_counters(void)
 
 static void bubble(int seat, const char *text)
 {
-    int x = seat == 4 ? 0x1c0 : face_x[seat] + (seat == 3 ? -92 : 84), y = seat == 4 ? 0x105 : face_y[seat] + 30;
+    int x = seat == 4 ? 0x1c0 : face_x[seat] + (seat == 3 ? -92 : 84),
+        y = seat == 4 ? 0x105 : face_y[seat] + 30;
     res_box(x, y, 88, 15, 7);
     res_text(FONT_8, x + 4, y + 4, 0, 8, text);
 }
@@ -339,18 +349,18 @@ static void draw_title(void)
     res_sprite(SPR_LOGO_KP, 188, 6, SPR_NONE);
     res_text(FONT_6, 40, 30, 0, 6, "ОСНОВАНА");
     res_text(FONT_6, 40, 38, 0, 6, "В 1925 Г");
-    static const char *months[12] = {"января", "февраля", "марта",    "апреля",  "мая",    "июня",
-                                     "июля",   "августа", "сентября", "октября", "ноября", "декабря"};
-    static const char *days[7] = {"воскресенье", "понедельник", "вторник", "среда",
-                                  "четверг",     "пятница",     "суббота"};
+    static const char *months[12] = { "января", "февраля", "марта",    "апреля",  "мая",    "июня",
+                                      "июля",   "августа", "сентября", "октября", "ноября", "декабря" };
+    static const char *days[7] = { "воскресенье", "понедельник", "вторник", "среда",
+                                   "четверг",     "пятница",     "суббота" };
     time_t t = time(NULL);
     struct tm *tm = localtime(&t);
     res_fill(10, 64, 620, 1, 0);
-    res_textf(FONT_6, 14, 67, 0, 6, "%s, %d %s %d г.   N 118   Цена договорная", days[tm->tm_wday], tm->tm_mday,
-              months[tm->tm_mon], tm->tm_year + 1900);
+    res_textf(FONT_6, 14, 67, 0, 6, "%s, %d %s %d г.   N 118   Цена договорная", days[tm->tm_wday],
+              tm->tm_mday, months[tm->tm_mon], tm->tm_year + 1900);
     res_fill(10, 76, 620, 1, 0);
-    static const char *lines[] = {"\"Комсомольская правда\"", "дарит", "своим дорогим читателям",
-                                  "старую добрую карточную игру", "под названием"};
+    static const char *lines[] = { "\"Комсомольская правда\"", "дарит", "своим дорогим читателям",
+                                   "старую добрую карточную игру", "под названием" };
     for (int i = 0; i < 5; i++)
         res_text_shadow(FONT_14, 320 - res_text_len(lines[i]) * 4, 88 + i * 15, 0, 15, 8, lines[i]);
     res_sprite(SPR_LOGO_KING, 222, 166, 7);
@@ -373,10 +383,13 @@ static void draw_name(void)
     if (club.n) {
         res_text(FONT_8, 60, 228, 15, 8, "Члены клуба:");
         int top[9], n = club_top(&club, top);
-        for (int i = 0; i < n; i++) res_text(FONT_8, 60 + (i % 3) * 180, 242 + (i / 3) * 12, 14, 8, club.m[top[i]].name);
+        for (int i = 0; i < n; i++)
+            res_text(FONT_8, 60 + (i % 3) * 180, 242 + (i / 3) * 12, 14, 8, club.m[top[i]].name);
     }
-    if (name_wait) res_text(FONT_8, 320 - 16 * 4, 330, 14, 8, "Спрашиваю клуб...");
-    else if (msg) res_text(FONT_8, 320 - res_text_len(msg) * 4, 330, 14, 8, msg);
+    if (name_wait)
+        res_text(FONT_8, 320 - 16 * 4, 330, 14, 8, "Спрашиваю клуб...");
+    else if (msg)
+        res_text(FONT_8, 320 - res_text_len(msg) * 4, 330, 14, 8, msg);
 }
 
 static int picked(int cell)
@@ -389,12 +402,15 @@ static int picked(int cell)
 static void draw_partners(void)
 {
     res_fill(0, 0, RES_W, RES_H, 2);
-    static const char *who[3][2] = {{"ОН ИГРАЕТ", "НЕПЛОХО"}, {"ОНА ИГРАЕТ", "ОТЛИЧНО"}, {"ОН ВСЕГДА", "МУХЛЮЕТ"}};
+    static const char *who[3][2] = { { "ОН ИГРАЕТ", "НЕПЛОХО" },
+                                     { "ОНА ИГРАЕТ", "ОТЛИЧНО" },
+                                     { "ОН ВСЕГДА", "МУХЛЮЕТ" } };
     for (int row = 0; row < 3; row++) {
         res_sprite(SPR_STRIP + row, 24, 11 + row * 104, SPR_NONE);
         for (int col = 0; col < 4; col++) {
             int cell = row * 4 + col, x = 24 + col * 80, y = 11 + row * 104;
-            res_text(FONT_8, x + 40 - res_text_len(partner_names[cell]) * 4, y + 91, 15, 8, partner_names[cell]);
+            res_text(FONT_8, x + 40 - res_text_len(partner_names[cell]) * 4, y + 91, 15, 8,
+                     partner_names[cell]);
             int s = picked(cell);
             if (s) {
                 res_box(x + 1, y + 10, 78, 64, 7);
@@ -431,8 +447,10 @@ static void draw_over(void)
         res_textf(FONT_8, 0x110 - 8, y, 0, 8, "$%7ld", rows[i].balance);
         res_textf(FONT_8, 0x168, y, 0, 8, "%4u", rows[i].games);
     }
-    if (result_wait) res_text(FONT_6, 0x98, 334, 8, 6, "Сообщаю в клуб...");
-    else if (net_note) res_text(FONT_6, 0x98, 334, 4, 6, net_note);
+    if (result_wait)
+        res_text(FONT_6, 0x98, 334, 8, 6, "Сообщаю в клуб...");
+    else if (net_note)
+        res_text(FONT_6, 0x98, 334, 4, 6, net_note);
     res_sprite(SPR_BILL, 20, 140, 2);
     res_sprite(SPR_BILL, 544, 140, 2);
 }
@@ -468,7 +486,7 @@ static void after_deal(void)
         if (decl == KG_HUMAN) {
             kg_contract_begin(&G);
             int k;
-            do k = KG_KEY_PICK(rand() % KG_GAMES);
+            do k = KG_KEY_PICK(demo_rand(KG_GAMES));
             while (G.played[KG_HUMAN][k - KG_KEY_PICK(0)]);
             log_poll(k);
             kg_contract_poll(&G, k);
@@ -549,7 +567,8 @@ static void result_update(void)
     if (r == NET_PENDING) return;
     result_wait = 0;
     if (r != NET_OK) {
-        net_note = r == NET_TAKEN ? "Клуб: это имя занято другим членом клуба." : "Клуб не ответил: игра записана только здесь.";
+        net_note = r == NET_TAKEN ? "Клуб: это имя занято другим членом клуба."
+                                  : "Клуб не ответил: игра записана только здесь.";
         return;
     }
     int members = 0, total = 0, games = 0, is_new = 0;
@@ -655,6 +674,7 @@ static void table_update(void)
                 start_deal();
         }
         break;
+    default: break;
     }
 }
 
@@ -709,6 +729,7 @@ static void click(int x, int y)
             push_key(K_ANY);
         break;
     case SC_OVER: sc = SC_TITLE; break;
+    default: break;
     }
 }
 
@@ -717,11 +738,16 @@ static void key(SDL_Keysym ks)
     int k = 0;
     switch (ks.sym) {
     case SDLK_SPACE: k = KG_KEY_SPACE; break;
-    case SDLK_LEFT: case SDLK_KP_4: k = KG_KEY_LEFT; break;
-    case SDLK_RIGHT: case SDLK_KP_6: k = KG_KEY_RIGHT; break;
-    case SDLK_UP: case SDLK_KP_8: k = KG_KEY_UP; break;
-    case SDLK_DOWN: case SDLK_KP_2: k = KG_KEY_DOWN; break;
-    case SDLK_RETURN: case SDLK_KP_ENTER: k = K_ENTER; break;
+    case SDLK_LEFT:
+    case SDLK_KP_4: k = KG_KEY_LEFT; break;
+    case SDLK_RIGHT:
+    case SDLK_KP_6: k = KG_KEY_RIGHT; break;
+    case SDLK_UP:
+    case SDLK_KP_8: k = KG_KEY_UP; break;
+    case SDLK_DOWN:
+    case SDLK_KP_2: k = KG_KEY_DOWN; break;
+    case SDLK_RETURN:
+    case SDLK_KP_ENTER: k = K_ENTER; break;
     case SDLK_ESCAPE: k = K_ESC; break;
     case SDLK_BACKSPACE: k = K_BACKSPACE; break;
     default: k = K_ANY;
@@ -764,6 +790,7 @@ static void key(SDL_Keysym ks)
         push_key(k);
         break;
     case SC_OVER: sc = SC_TITLE; break;
+    default: break;
     }
 }
 
@@ -848,7 +875,7 @@ static void present(void)
         dh = h;
         dw = h * 4 / 3;
     }
-    SDL_Rect d = {(w - dw) / 2, (h - dh) / 2, dw, dh};
+    SDL_Rect d = { (w - dw) / 2, (h - dh) / 2, dw, dh };
     SDL_RenderCopy(ren, screen, NULL, &d);
     SDL_RenderPresent(ren);
 }
@@ -864,6 +891,7 @@ static void render(void)
     case SC_PARTNERS: draw_partners(); break;
     case SC_TABLE: draw_table(); break;
     case SC_OVER: draw_over(); break;
+    default: break;
     }
     SDL_RenderSetScale(ren, 1, 1);
 }
@@ -889,7 +917,8 @@ static void frame(void)
     now = SDL_GetTicks();
     if (demo_until && sc == SC_TITLE) {
         uint32_t seed;
-        if ((online = net_game_seed(&seed)) || now > demo_until) {
+        online = net_game_seed(&seed);
+        if (online || now > demo_until) {
             demo_until = 0;
             start_game(online ? seed : (uint32_t)time(NULL));
         }
@@ -946,7 +975,8 @@ static int shot(const char *file, const char *what)
     }
     render();
     SDL_SetRenderTarget(ren, screen);
-    SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, RES_W * SCALE, RES_H * SCALE, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface *s =
+        SDL_CreateRGBSurfaceWithFormat(0, RES_W * SCALE, RES_H * SCALE, 32, SDL_PIXELFORMAT_ARGB8888);
     SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
     int r = SDL_SaveBMP(s, file);
     SDL_FreeSurface(s);
@@ -987,12 +1017,16 @@ static int record(const char *dir, int seconds, uint32_t seed)
     FILE *v = fopen(path, "wb");
     snprintf(path, sizeof path, "%s/king.s16", dir);
     FILE *a = fopen(path, "wb");
-    if (!v || !a) return 1;
+    if (!v || !a) {
+        if (v) fclose(v);
+        if (a) fclose(a);
+        return 1;
+    }
     audio_offline();
     demo = watch = 1;
-    srand(seed);
+    demo_seed = seed;
     member = club_join(&club, "Товарищ", &member_new);
-    static const int picks[3] = {0, 5, 10};
+    static const int picks[3] = { 0, 5, 10 };
     static unsigned char px[RES_W * SCALE * RES_H * SCALE * 4], rgb[RES_W * RES_H * 3];
     static short pcm[AUDIO_RATE / 30 + 1];
     int frames = seconds * 30;
@@ -1020,7 +1054,8 @@ static int record(const char *dir, int seconds, uint32_t seed)
         SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_RGBA32, px, RES_W * SCALE * 4);
         for (int y = 0; y < RES_H; y++)
             for (int x = 0; x < RES_W; x++)
-                memcpy(rgb + (y * RES_W + x) * 3, px + ((y * SCALE + 1) * RES_W * SCALE + x * SCALE + 1) * 4, 3);
+                memcpy(rgb + (y * RES_W + x) * 3, px + ((y * SCALE + 1) * RES_W * SCALE + x * SCALE + 1) * 4,
+                       3);
         fwrite(rgb, 1, sizeof rgb, v);
         int n = AUDIO_RATE * (f + 1) / 30 - AUDIO_RATE * f / 30;
         audio_render(pcm, n);
@@ -1046,8 +1081,9 @@ static int find_files(int argc, char **argv)
     int ok = 0;
     for (int i = 0; i < n && !ok; i++) ok = res_load_dir(dirs[i]) == 0;
     if (!ok)
-        fprintf(stderr, "king: KING.LIB and KING.FNT from your copy of the game are needed. Put them in\n"
-                        "  %s\nor pass their folder on the command line.\n",
+        fprintf(stderr,
+                "king: KING.LIB and KING.FNT from your copy of the game are needed. Put them in\n"
+                "  %s\nor pass their folder on the command line.\n",
                 pref ? pref : ".");
     SDL_free(base);
     SDL_free(pref);
@@ -1090,17 +1126,20 @@ int main(int argc, char **argv)
     club_load(&club);
     if (!find_files(argc, argv)) return 1;
     win = SDL_CreateWindow("KING", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 960,
-                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | (shot_file ? SDL_WINDOW_HIDDEN : 0));
-    ren = SDL_CreateRenderer(win, -1, shot_file ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
+                               (shot_file ? SDL_WINDOW_HIDDEN : 0));
+    ren = SDL_CreateRenderer(
+        win, -1, shot_file ? SDL_RENDERER_SOFTWARE : SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
     res_init(ren);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-    screen = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, RES_W * SCALE, RES_H * SCALE);
+    screen = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, RES_W * SCALE,
+                               RES_H * SCALE);
     if (rec_dir) return record(rec_dir, rec_seconds, rec_seed);
     if (shot_file) return shot(shot_file, shot_what) == 0 ? 0 : 1;
     audio_init();
-    srand((unsigned)time(NULL));
+    demo_seed = (uint32_t)time(NULL);
     if (demo) {
         member = club_join(&club, "Демо", &member_new);
         partner[1] = 0;

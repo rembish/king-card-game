@@ -65,8 +65,8 @@ int kg_declarer(const kg_game *g) { return g->dealer % 4 + 1; }
 /* contract_screen (60cd): price per item and number of items */
 void kg_set_contract(kg_game *g, int player, int game)
 {
-    static const int16_t price[7] = {20, 20, 20, 40, 80, 160, 20};
-    static const int16_t items[7] = {8, 8, 8, 4, 2, 1, 8};
+    static const int16_t price[7] = { 20, 20, 20, 40, 80, 160, 20 };
+    static const int16_t items[7] = { 8, 8, 8, 4, 2, 1, 8 };
     g->played[player][game] = 1;
     g->games_left[player]--;
     g->deal_no = (int16_t)game;
@@ -161,9 +161,9 @@ void kg_play(kg_game *g, int p, int idx)
 static void score(kg_game *g, int w)
 {
     int c = g->deal_no % 7, n = 0;
-    const int16_t *t[5] = {0, &g->hands[1][9], &g->hands[2][9], &g->hands[3][9], &g->hands[4][9]};
+    const int16_t *t[5] = { 0, &g->hands[1][9], &g->hands[2][9], &g->hands[3][9], &g->hands[4][9] };
     switch (c) {
-    case KG_TRICKS: n = 1; break;
+    default: /* KG_TRICKS */ n = 1; break;
     case KG_HEARTS_C:
         for (int p = 1; p <= 4; p++) n += *t[p] > 39;
         break;
@@ -310,16 +310,15 @@ static int16_t trick_value(const search_ctx *x, kg_rows s)
     return x->contract_game < 7 ? v : (int16_t)-v;
 }
 
-/* ai_search (0afd) */
-static int16_t search(const search_ctx *x, int16_t best, int16_t tricks, int16_t ncards, int16_t q,
-                      int16_t i, const kg_rows in)
+/* ai_search (0afd): the original's recursive search, kept as it is (at most 3 tricks deep) */
+// NOLINTNEXTLINE(misc-no-recursion)
+static int16_t search(const search_ctx *x, int16_t best, int16_t tricks, int16_t ncards, int16_t q, int16_t i,
+                      kg_rows in)
 {
     kg_rows s;
     memcpy(s, in, sizeof s);
     int16_t card = s[q][i];
-    if (best == 0)
-        best = (int16_t)(card + (q << 8));
-    else if (KG_SUIT(card) == KG_SUIT(best & 0xff) && card > (best & 0xff))
+    if (best == 0 || (KG_SUIT(card) == KG_SUIT(best & 0xff) && card > (best & 0xff)))
         best = (int16_t)(card + (q << 8));
     s[q][0]--;
     for (int k = i; k <= s[q][0]; k++) s[q][k] = s[q][k + 1];
@@ -356,10 +355,10 @@ static int16_t search(const search_ctx *x, int16_t best, int16_t tricks, int16_t
 /* ai_choose_card (0e88) */
 int kg_ai_choose(const kg_game *g, int p)
 {
-    static const int depth_by_trick[8] = {2, 2, 2, 2, 3, 3, 2, 1};
+    static const int depth_by_trick[8] = { 2, 2, 2, 2, 3, 3, 2, 1 };
     kg_rows s;
     memcpy(s, g->hands, sizeof s);
-    search_ctx x = {g->deal_no, depth_by_trick[g->trick_no & 7], p};
+    search_ctx x = { g->deal_no, depth_by_trick[g->trick_no & 7], p };
     const int16_t *h = s[p];
     if (h[0] == 1) return 1;
     int no_hearts = 0, must = 0, best = g->trick_best % 256;
@@ -406,6 +405,7 @@ char kg_poll_token(int key)
     case KG_KEY_RIGHT: return 'M';
     case KG_KEY_UP: return 'H';
     case KG_KEY_DOWN: return 'P';
+    default: break;
     }
     if (key >= KG_KEY_PICK(0) && key < KG_KEY_PICK(KG_GAMES)) return (char)('a' + key - KG_KEY_PICK(0));
     return '?';
@@ -421,6 +421,7 @@ int kg_poll_key(char t)
     case 'H': return KG_KEY_UP;
     case 'P': return KG_KEY_DOWN;
     case '?': return KG_KEY_OTHER;
+    default: break;
     }
     if (t >= 'a' && t < 'a' + KG_GAMES) return KG_KEY_PICK(t - 'a');
     return -1;

@@ -38,7 +38,7 @@ static void callback(void *u, Uint8 *stream, int len)
 
 void audio_init(void)
 {
-    SDL_AudioSpec want = {0}, have;
+    SDL_AudioSpec want = { 0 }, have;
     want.freq = RATE;
     want.format = AUDIO_S16SYS;
     want.channels = 1;
@@ -80,4 +80,3 @@ static void push(int hz, int ms)
 }
 
 void audio_beep(int hz, int ms) { push(hz, ms); }
-

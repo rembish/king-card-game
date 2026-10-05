@@ -67,8 +67,8 @@ static void body(char *out, int max, const char *name, const char *polls)
     /* names are letters, digits and punctuation (the game's input), polls are token letters:
      * only quotes and backslashes need escaping */
     int n = 0;
-    const char *parts[2] = {name, polls};
-    const char *keys[2] = {"name", "polls"};
+    const char *parts[2] = { name, polls };
+    const char *keys[2] = { "name", "polls" };
     n += snprintf(out + n, (size_t)(max - n), "{");
     for (int k = 0; k < 2; k++) {
         if (!parts[k]) continue;
@@ -124,7 +124,7 @@ int net_claim_status(void) { return NET_FAILED; }
 void net_new_game(void) {}
 int net_game_seed(uint32_t *seed)
 {
-    (void)seed;
+    *seed = 0;
     return 0;
 }
 void net_submit(const char *name, const char *polls)
@@ -134,8 +134,7 @@ void net_submit(const char *name, const char *polls)
 }
 int net_result(char *buf, int max)
 {
-    (void)buf;
-    (void)max;
+    if (max > 0) buf[0] = 0;
     return NET_FAILED;
 }
 

@@ -37,9 +37,9 @@
 #define KG_GAMES   14 /* 7 contracts x {don't take, take} */
 
 /* card = suit * 13 + rank; suit 0 diamonds, 1 clubs, 2 spades, 3 hearts; rank 0..12 = 2..A */
-#define KG_SUIT(c)   ((c) / 13)
-#define KG_RANK(c)   ((c) % 13)
-#define KG_HEARTS    3
+#define KG_SUIT(c)     ((c) / 13)
+#define KG_RANK(c)     ((c) % 13)
+#define KG_HEARTS      3
 #define KG_KING_HEARTS 50
 
 enum { KG_TRICKS, KG_HEARTS_C, KG_BOYS, KG_GIRLS, KG_LAST_TWO, KG_KING, KG_ALL };
@@ -84,10 +84,10 @@ typedef struct {
     kg_rows hands;
 
     /* the human's input loops */
-    int16_t cursor;      /* card index 1..count */
-    int16_t blink;       /* cursor blink phase, 0 = steady */
-    int16_t must;        /* 0 any card, 1 must follow suit */
-    int16_t no_hearts;   /* leading in 1/5/6 with another suit in hand */
+    int16_t cursor;    /* card index 1..count */
+    int16_t blink;     /* cursor blink phase, 0 = steady */
+    int16_t must;      /* 0 any card, 1 must follow suit */
+    int16_t no_hearts; /* leading in 1/5/6 with another suit in hand */
     int16_t grid_half, grid_row;
 } kg_game;
 

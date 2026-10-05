@@ -14,4 +14,7 @@ __attribute__((export_name("verify"))) int kg_wasm_verify(uint32_t seed, int len
     if (len < 0 || len > KG_WASM_MAX) return KG_REPLAY_SHORT;
     return kg_replay(&game, seed, buffer, (size_t)len);
 }
-__attribute__((export_name("total"))) int kg_wasm_total(int p) { return p >= 1 && p <= 4 ? game.total[p] : 0; }
+__attribute__((export_name("total"))) int kg_wasm_total(int p)
+{
+    return p >= 1 && p <= 4 ? game.total[p] : 0;
+}

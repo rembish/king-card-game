@@ -22,8 +22,8 @@ void club_load(club_t *c)
         club_member *m = &c->m[c->n++];
         memcpy(m->name, p, 25);
         m->name[24] = 0;
-        m->balance = (int32_t)((uint32_t)p[25] | (uint32_t)p[26] << 8 | (uint32_t)p[27] << 16 |
-                               (uint32_t)p[28] << 24);
+        m->balance =
+            (int32_t)((uint32_t)p[25] | (uint32_t)p[26] << 8 | (uint32_t)p[27] << 16 | (uint32_t)p[28] << 24);
         m->games = (uint16_t)(p[29] | p[30] << 8);
     }
 }
@@ -32,7 +32,7 @@ int club_save(const club_t *c)
 {
     if (club_readonly) return 0;
     static unsigned char buf[4 + 2 + CLUB_MAX * 32];
-    memcpy(buf, MAGIC, 4);
+    for (int i = 0; i < 4; i++) buf[i] = (unsigned char)MAGIC[i];
     buf[4] = (unsigned char)c->n;
     buf[5] = (unsigned char)(c->n >> 8);
     unsigned char *p = buf + 6;
