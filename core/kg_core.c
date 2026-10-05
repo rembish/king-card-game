@@ -396,3 +396,32 @@ void kg_ai_play(kg_game *g)
     int p = kg_turn(g);
     kg_play(g, p, kg_ai_choose(g, p));
 }
+
+char kg_poll_token(int key)
+{
+    switch (key) {
+    case KG_KEY_NONE: return '.';
+    case KG_KEY_SPACE: return '_';
+    case KG_KEY_LEFT: return 'K';
+    case KG_KEY_RIGHT: return 'M';
+    case KG_KEY_UP: return 'H';
+    case KG_KEY_DOWN: return 'P';
+    }
+    if (key >= KG_KEY_PICK(0) && key < KG_KEY_PICK(KG_GAMES)) return (char)('a' + key - KG_KEY_PICK(0));
+    return '?';
+}
+
+int kg_poll_key(char t)
+{
+    switch (t) {
+    case '.': return KG_KEY_NONE;
+    case '_': return KG_KEY_SPACE;
+    case 'K': return KG_KEY_LEFT;
+    case 'M': return KG_KEY_RIGHT;
+    case 'H': return KG_KEY_UP;
+    case 'P': return KG_KEY_DOWN;
+    case '?': return KG_KEY_OTHER;
+    }
+    if (t >= 'a' && t < 'a' + KG_GAMES) return KG_KEY_PICK(t - 'a');
+    return -1;
+}

@@ -1,8 +1,7 @@
 /* Replay a game through the core and print one JSON record per deal, in the form
  * re/emu/record.py stores the original's (tests/difftest.py compares them).
  *
- *     replay SEED POLLS        POLLS: one character per keyboard poll of the original:
- *                              '.' none, '_' Space, 'K' 'M' 'H' 'P' Left Right Up Down
+ *     replay SEED POLLS        POLLS: one character per keyboard poll (kg_poll_token)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,19 +13,12 @@ static const char *polls;
 
 static int next_key(void)
 {
-    if (!*polls) {
-        fprintf(stderr, "poll script exhausted\n");
+    int k = *polls ? kg_poll_key(*polls++) : -1;
+    if (k < 0) {
+        fprintf(stderr, "poll script exhausted or bad\n");
         exit(2);
     }
-    switch (*polls++) {
-    case '_': return KG_KEY_SPACE;
-    case 'K': return KG_KEY_LEFT;
-    case 'M': return KG_KEY_RIGHT;
-    case 'H': return KG_KEY_UP;
-    case 'P': return KG_KEY_DOWN;
-    case '.': return KG_KEY_NONE;
-    default: return KG_KEY_OTHER;
-    }
+    return k;
 }
 
 static void print_hand(const kg_game *g, int p)

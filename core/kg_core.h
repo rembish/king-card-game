@@ -51,6 +51,12 @@ enum { KG_KEY_NONE, KG_KEY_SPACE, KG_KEY_LEFT, KG_KEY_RIGHT, KG_KEY_UP, KG_KEY_D
  * the random numbers depend only on the number of polls, not on where the cursor is. */
 #define KG_KEY_PICK(i) (0x100 + (i))
 
+/* One character per poll, for logs and replays (the frontend's log, tests/replay.c and the
+ * server's check all use these): '.' none, '_' Space, 'K' 'M' 'H' 'P' Left Right Up Down,
+ * '?' another key, 'a' + i = KG_KEY_PICK(i). */
+char kg_poll_token(int key);
+int kg_poll_key(char token); /* -1 for a character that is not a token */
+
 /* Rows of words as the original keeps them (ds:06fa + 20p): [0] count, [1..8] cards in hand
  * order, [9] the card on the table. The computer's hands stay in deal order; the human's is
  * sorted. Order matters: the AI tries cards in hand order and keeps the first on ties. */
