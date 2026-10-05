@@ -191,13 +191,13 @@ steps (0 = wait for ever).
 - Computer: `v = Σ (card % 13) - 68` over its 8 cards (68 = 8 x the average rank 8.5; a weak hand
   is negative). Then, taking the first group that still has an unplayed game and picking in it
   by `Random(n)` repeated until it hits an unplayed one:
-  1. if `v < 0`: "не брать" — `{0,1,2}` by `Random(3)` (only if `v > -10`), else `{3..6}` by
+  1. only if `v < 0`: "не брать" — `{0,1,2}` by `Random(3)` (only if `v > -10`), else `{3..6}` by
      `Random(4) + 3`, else `{0..6}` by `Random(7)`;
-  2. otherwise (or if nothing was left there) "брать" — `{0,1,2}` by `Random(3)` (only if
+  2. if nothing chosen yet: "брать" — `{0,1,2}` by `Random(3)` (only if
      `v < 10`), else `{3..6}` by `Random(4) + 3`, else `{0..6}` by `Random(7)`;
-  3. otherwise `Random(14)` over all 14 games. Unreachable: the declarer rotates evenly, so a
-     player is declarer exactly 14 times and always has an unplayed game, and step 2's last group
-     finds any unplayed "брать" game. The port keeps it anyway.
+  3. otherwise `Random(14)` over all 14 games, until an unplayed one. Reached when `v >= 0`
+     (step 1 skipped) and all of the player's "брать" games are used: a strong hand then gets a
+     random "не брать" game, not a chosen one.
   Then it shows "Выбираю..." and waits `wait_space_or_click(500)` (5 s or a key).
 - Random calls added to the list above: the computer's contract choice. Rejected draws in the
   `repeat ... until` loops count too.
