@@ -140,6 +140,20 @@ Pushes to `main` deploy through GitHub Actions (`.github/workflows/pages.yml`, w
 | gcc + SDL2 + CMake | Native build |
 | Emscripten (emsdk) | WebAssembly build |
 
+## Code quality
+
+The core builds with `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion` and more
+(the frontend and tools with the usual warnings), clean under gcc and clang, and is kept clean
+under clang-tidy (`.clang-tidy`) and clang-format 21 (`.clang-format`). The Python tooling is
+formatted and linted with ruff and type-checked with `mypy --strict`. CI runs all of it on
+every push, with the sanitizers, the web build, the server's tests and the three games recorded
+from the original (`tests/fixtures`); the deploy waits for it.
+
+```sh
+make help        # the everyday commands
+make check       # format, Python lint and types, clang-tidy, the recorded games
+```
+
 ## Credits
 
 «Кинг» © 1993 Дмитрий Башуров (Bady), Arzamas-16; published by «Комсомольская правда». This
