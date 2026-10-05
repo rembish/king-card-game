@@ -31,7 +31,8 @@ int club_join(club_t *c, const char *name, int *is_new);
 void club_finish(club_t *c, int idx, int total);
 
 /* the society column, as game_over (KING2 456e) writes it */
-int club_chronicle(const club_t *c, int idx, int total, int is_new, char lines[][CLUB_LINE_LEN]);
+int club_chronicle(const char *name, int total, long balance, int members, int is_new,
+                   char lines[][CLUB_LINE_LEN]);
 /* up to 9 members with a non-negative balance, richest first */
 int club_top(const club_t *c, int out[9]);
 

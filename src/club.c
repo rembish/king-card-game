@@ -118,17 +118,16 @@ static int line(char lines[][CLUB_LINE_LEN], int n, const char *s)
     return n + 1;
 }
 
-int club_chronicle(const club_t *c, int idx, int total, int is_new, char lines[][CLUB_LINE_LEN])
+int club_chronicle(const char *name, int total, long bal, int members, int is_new,
+                   char lines[][CLUB_LINE_LEN])
 {
     char b[CLUB_LINE_LEN];
-    const char *name = c->m[idx].name;
-    long bal = c->m[idx].balance;
     int n = 0;
     n = line(lines, n, "СВЕТСКАЯ ХРОНИКА.(Наш спец.корр)");
     n = line(lines, n, "Сегодня в KING- клубе состоялись");
     n = line(lines, n, "очередные игры.  Подавали свежее");
     n = line(lines, n, "пиво с воблой.На вечере были все");
-    snprintf(b, sizeof b, "члены клуба числом %d.", c->n);
+    snprintf(b, sizeof b, "члены клуба числом %d.", members);
     n = line(lines, n, b);
     if (is_new) {
         n = line(lines, n, "Прошел прием новых членов клуба.");

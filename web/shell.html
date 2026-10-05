@@ -93,7 +93,7 @@
     errors = [];
     document.body.className = 'playing';
     Module.canvas.focus();
-    Module.callMain(['/game']);
+    Module.callMain(/[?&]demo\b/.test(location.search) ? ['/game', '--demo'] : ['/game']);
   }
 
   function persist(done) {

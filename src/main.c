@@ -13,6 +13,7 @@
 #include "audio.h"
 #include "club.h"
 #include "kg_core.h"
+#include "net.h"
 #include "res.h"
 #include "store.h"
 
@@ -73,6 +74,17 @@ static int pcur_col, pcur_row;
 static char chron[CLUB_LINES][CLUB_LINE_LEN];
 static int nchron, game_total;
 static const char *msg;
+static int online;      /* this game was dealt by the club's server and will be booked there */
+static int name_wait;   /* asking the club whether the name is free */
+static int result_wait; /* the game is being booked */
+static const char *net_note;
+/* the end screen's table: the club's richest, the global club's when it answered */
+static struct {
+    char name[CLUB_NAME * 2 + 1];
+    long balance;
+    unsigned games;
+} rows[9];
+static int nrows;
 
 /* seats: 1 left, 2 top, 3 right, 4 the human (from ds:0004.. of KING2) */
 static const int hand_x[5] = {0, 12, 296, 492, 0}, hand_y[5] = {0, 115, 45, 115, 280};
@@ -124,6 +136,7 @@ static void log_poll(int key)
 /* the key for one poll of the human's loops */
 static int poll_key(void)
 {
+    if (demo) return KG_KEY_PICK(kg_ai_choose(&G, KG_HUMAN));
     if (replay_polls) {
         int k = *replay_polls ? kg_poll_key(*replay_polls++) : -1;
         if (k < 0) {
@@ -142,7 +155,7 @@ static int poll_key(void)
  * the polls made, so a replay is unaffected. */
 static int poll_due(void)
 {
-    if (replay_polls) return 1;
+    if (replay_polls || demo) return 1;
     if (now - poll_t > 1000) poll_t = now - POLL_MS;
     if (now - poll_t < POLL_MS) return 0;
     poll_t += POLL_MS;
@@ -150,6 +163,7 @@ static int poll_due(void)
 }
 
 static int auto_continue(void) { return demo || replay_polls; }
+static Uint32 demo_until; /* the demo waits this long for the club's seed */
 
 /* ---- layout helpers ---- */
 
@@ -349,7 +363,8 @@ static void draw_name(void)
         int top[9], n = club_top(&club, top);
         for (int i = 0; i < n; i++) res_text(FONT_8, 60 + (i % 3) * 180, 242 + (i / 3) * 12, 14, 8, club.m[top[i]].name);
     }
-    if (msg) res_text(FONT_8, 320 - res_text_len(msg) * 4, 330, 14, 8, msg);
+    if (name_wait) res_text(FONT_8, 320 - 16 * 4, 330, 14, 8, "Спрашиваю клуб...");
+    else if (msg) res_text(FONT_8, 320 - res_text_len(msg) * 4, 330, 14, 8, msg);
 }
 
 static int picked(int cell)
@@ -397,13 +412,15 @@ static void draw_over(void)
     res_text(FONT_8, 0x98, y, 0, 8, "   член        лицевой    число");
     res_text(FONT_8, 0x98, y + 9, 0, 8, "   клуба         счет      игр");
     y += 20;
-    int top[9], n = club_top(&club, top);
-    for (int i = 0; i < n; i++, y += 9) {
-        const club_member *m = &club.m[top[i]];
-        res_textf(FONT_8, 0x98, y, top[i] == member ? 4 : 0, 8, "%d %s", i + 1, m->name);
-        res_textf(FONT_8, 0x110 - 8, y, 0, 8, "$%7ld", (long)m->balance);
-        res_textf(FONT_8, 0x168, y, 0, 8, "%4u", m->games);
+    for (int i = 0; i < nrows; i++, y += 9) {
+        if (rows[i].balance < 0) continue; /* the original lists no debtors */
+        int me = !strcmp(rows[i].name, club.m[member].name);
+        res_textf(FONT_8, 0x98, y, me ? 4 : 0, 8, "%d %s", i + 1, rows[i].name);
+        res_textf(FONT_8, 0x110 - 8, y, 0, 8, "$%7ld", rows[i].balance);
+        res_textf(FONT_8, 0x168, y, 0, 8, "%4u", rows[i].games);
     }
+    if (result_wait) res_text(FONT_6, 0x98, 334, 8, 6, "Сообщаю в клуб...");
+    else if (net_note) res_text(FONT_6, 0x98, 334, 4, 6, net_note);
     res_sprite(SPR_BILL, 20, 140, 2);
     res_sprite(SPR_BILL, 544, 140, 2);
 }
@@ -476,7 +493,7 @@ static void next_turn(void)
         return;
     }
     int p = kg_turn(&G);
-    if (p == KG_HUMAN && !demo) {
+    if (p == KG_HUMAN) { /* in the demo the computer plays it, through the same polls */
         kg_human_begin(&G);
         nkeys = 0; /* flush_input */
         poll_t = now;
@@ -485,12 +502,56 @@ static void next_turn(void)
         set_phase(PH_AI_THINK);
 }
 
+static void local_rows(void)
+{
+    int top[9];
+    nrows = club_top(&club, top);
+    for (int i = 0; i < nrows; i++) {
+        snprintf(rows[i].name, sizeof rows[i].name, "%s", club.m[top[i]].name);
+        rows[i].balance = club.m[top[i]].balance;
+        rows[i].games = club.m[top[i]].games;
+    }
+}
+
 static void game_over(void)
 {
     game_total = G.total[KG_HUMAN];
     club_finish(&club, member, game_total);
-    nchron = club_chronicle(&club, member, game_total, member_new, chron);
+    const club_member *m = &club.m[member];
+    nchron = club_chronicle(m->name, game_total, m->balance, club.n, member_new, chron);
+    local_rows();
+    net_note = NULL;
+    result_wait = 0;
+    if (online && !replay_polls) {
+        net_submit(m->name, polls ? polls : "");
+        result_wait = 1;
+    }
     sc = SC_OVER;
+}
+
+/* the club's answer: its numbers replace this browser's */
+static void result_update(void)
+{
+    static char buf[4096];
+    int r = net_result(buf, sizeof buf);
+    if (r == NET_PENDING) return;
+    result_wait = 0;
+    if (r != NET_OK) {
+        net_note = r == NET_TAKEN ? "Клуб: это имя занято другим членом клуба." : "Клуб не ответил: игра записана только здесь.";
+        return;
+    }
+    int members = 0, total = 0, games = 0, is_new = 0;
+    long balance = 0;
+    char *line = strtok(buf, "\n");
+    if (!line || sscanf(line, "%d %d %ld %d %d", &members, &total, &balance, &games, &is_new) != 5) return;
+    nrows = 0;
+    while ((line = strtok(NULL, "\n")) && nrows < 9) {
+        int used = 0;
+        if (sscanf(line, "%ld %u %n", &rows[nrows].balance, &rows[nrows].games, &used) < 2) continue;
+        snprintf(rows[nrows].name, sizeof rows[nrows].name, "%s", line + used);
+        nrows++;
+    }
+    nchron = club_chronicle(club.m[member].name, total, balance, members, is_new, chron);
 }
 
 static void table_update(void)
@@ -669,12 +730,10 @@ static void key(SDL_Keysym ks)
             size_t n = strlen(name_buf);
             while (n && (name_buf[n - 1] & 0xc0) == 0x80) n--;
             if (n) name_buf[n - 1] = 0;
-        } else if (k == K_ENTER && name_buf[0]) {
-            SDL_StopTextInput();
-            member = club_join(&club, name_buf, &member_new);
-            club_save(&club);
-            npartners = 0;
-            sc = SC_PARTNERS;
+        } else if (k == K_ENTER && name_buf[0] && !name_wait) {
+            msg = NULL;
+            net_claim(name_buf);
+            name_wait = 1;
         } else if (k == K_ESC)
             sc = SC_TITLE;
         break;
@@ -713,6 +772,24 @@ static void text_input(const char *t)
     }
 }
 
+/* the club said whether the name is free (natively there is no club: always free) */
+static void name_update(void)
+{
+    int r = net_claim_status();
+    if (r == NET_PENDING) return;
+    name_wait = 0;
+    if (r == NET_TAKEN) {
+        msg = "Это имя в клубе уже занято. Выберите другое.";
+        return;
+    }
+    SDL_StopTextInput();
+    member = club_join(&club, name_buf, &member_new);
+    club_save(&club);
+    npartners = 0;
+    net_new_game();
+    sc = SC_PARTNERS;
+}
+
 static void partners_update(void)
 {
     int k = pop_key();
@@ -727,7 +804,12 @@ static void partners_update(void)
         audio_beep(500 - 10 * i, i / 5 + 2);
         audio_beep(0, 2);
     }
-    if (npartners == 3) start_game((uint32_t)time(NULL) ^ (uint32_t)SDL_GetPerformanceCounter());
+    if (npartners == 3) {
+        uint32_t seed;
+        online = net_game_seed(&seed);
+        if (!online) seed = (uint32_t)time(NULL) ^ (uint32_t)SDL_GetPerformanceCounter();
+        start_game(seed);
+    }
 }
 
 /* ---- frame ---- */
@@ -783,6 +865,15 @@ static void frame(void)
     }
     ignore_text = 0;
     now = SDL_GetTicks();
+    if (demo_until && sc == SC_TITLE) {
+        uint32_t seed;
+        if ((online = net_game_seed(&seed)) || now > demo_until) {
+            demo_until = 0;
+            start_game(online ? seed : (uint32_t)time(NULL));
+        }
+    }
+    if (sc == SC_NAME && name_wait) name_update();
+    if (sc == SC_OVER && result_wait) result_update();
     if (sc == SC_PARTNERS) partners_update();
     if (sc == SC_TABLE) table_update();
     if (sc == SC_NAME && !SDL_IsTextInputActive()) SDL_StartTextInput();
@@ -931,7 +1022,9 @@ int main(int argc, char **argv)
         partner[2] = 5;
         partner[3] = 10;
         npartners = 3;
-        start_game((uint32_t)time(NULL));
+        net_new_game();
+        demo_until = SDL_GetTicks() + 3000;
+        sc = SC_TITLE;
     }
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(frame, 0, 1);
