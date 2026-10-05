@@ -12,16 +12,20 @@ if(NOT MSVC)
   add_compile_options(-Wall -Wextra)
 endif()
 
-add_library(kgcore STATIC core/kg_core.c)
+add_library(kgcore STATIC core/kg_core.c core/kg_replay.c)
 target_include_directories(kgcore PUBLIC core)
 
 # Replays a game from a seed and the keyboard polls; tests/difftest.py checks it against the
 # original's logs from re/emu/record.py.
 add_executable(replay tests/replay.c)
 target_link_libraries(replay PRIVATE kgcore)
+add_executable(botpolls tests/botpolls.c)
+target_link_libraries(botpolls PRIVATE kgcore)
+add_executable(verify tests/verify.c)
+target_link_libraries(verify PRIVATE kgcore)
 
 # The game. It reads KING.LIB and KING.FNT from the player's own copy at run time.
-add_executable(king src/main.c src/res.c src/club.c src/store.c src/audio.c)
+add_executable(king src/main.c src/res.c src/club.c src/store.c src/audio.c src/net.c)
 target_link_libraries(king PRIVATE kgcore)
 if(EMSCRIPTEN)
   # The page (web/shell.html) puts the player's files in /game (IndexedDB) and then calls main.
