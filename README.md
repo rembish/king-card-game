@@ -89,8 +89,11 @@ cmake --build build-web -j --target king
 cd build-web && python3 -m http.server   # open http://localhost:8000/king.html
 ```
 
-The page asks for `KING.LIB` and `KING.FNT`, or a zip of the game as it is, and keeps them in
-the browser.
+The page needs `KING.LIB` and `KING.FNT`. With one click (and the player's consent) it fetches
+the game's zip from [MyAbandonware](https://www.myabandonware.com/game/king-c1a) through
+`/api/original`, which asks for the current link the way their download button does and passes
+the 90 KB through (their server lets no other page download it; nothing is kept). Or the player
+chooses their own files or zip. Either way they stay in the browser.
 
 ## How faithful is it?
 
