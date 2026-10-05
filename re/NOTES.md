@@ -118,7 +118,7 @@ player's running score in the search.
 **`ai_choose_card(p)`** (`retf 6`: state pointer, `p`):
 
 1. `depth` by `trick_no` (`ds:07b8`, tricks completed in this deal, 0..7): 0..3 → 2, 4..5 → 3,
-   6 → 2, 7 → 1.
+   6 → 2, 7 → 1. The search counts the current trick as the first (confirmed by the difftest).
 2. One card left → play it (returns 1).
 3. Leading (`cards_in_trick` `ds:07ba` = 0) in contracts {1, 5, 6} (set `cs:0e68`): if the hand
    has any non-heart, `no_hearts` = 1.
@@ -227,3 +227,22 @@ steps (0 = wait for ever).
   Then it shows "Выбираю..." and waits `wait_space_or_click(500)` (5 s or a key).
 - Random calls added to the list above: the computer's contract choice. Rejected draws in the
   `repeat ... until` loops count too.
+
+## For the frontend
+
+What the original does around the logic, which a port has to keep for the game to feel and
+draw random numbers the same:
+
+- Both human input loops (`human_choose_card`, the contract grid) poll the keyboard once per
+  pass and `Delay(30)` between passes, so ~33 polls a second. `kg_human_poll` and
+  `kg_contract_poll` are exactly one pass. The card cursor's blink draws `Random(20)` on every
+  pass where it is not already blinking, so the poll cadence is part of the game.
+- `kg_human_begin` runs once per human turn before the first poll (it draws `Random(count)`,
+  again until the cursor is on the led suit when the human must follow).
+- `flush_input` drains the keyboard at the start of the human's card turn and of the contract
+  grid, and `wait_space_or_click` drains it too: keys typed while the computer thinks or a card
+  flies are thrown away.
+- `wait_space_or_click(0)` (Space or click) after every trick and after the deal table; the
+  computer's contract choice shows "Выбираю..." for `wait_space_or_click(500)` (5 s or a key).
+- The computer's search can take tens of seconds on a 1993 PC in the deepest positions
+  (> 500 M instructions); the C core needs milliseconds. The original shows "Думаю..." meanwhile.
