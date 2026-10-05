@@ -1,0 +1,15 @@
+# The browser game and its club on Cloudflare Pages: king.rembi.sh.
+#   public/      the web build (cloudflare/build.sh puts it there)
+#   functions/   /api/game, /api/result, /api/top
+#   lib/         the club logic and the core as WebAssembly (core.wasm, built by build.sh)
+# Deploys run from GitHub Actions (.github/workflows/pages.yml). The HMAC secret is set once:
+#   npx wrangler pages secret put KING_SECRET --project-name king-card-game
+name = "king-card-game"
+pages_build_output_dir = "public"
+compatibility_date = "2025-09-01"
+
+# members, the leaderboard, used game tokens, rate-limit counters
+#   npx wrangler kv namespace create KING_CLUB
+[[kv_namespaces]]
+binding = "CLUB"
+id = "KV_ID_PLACEHOLDER"

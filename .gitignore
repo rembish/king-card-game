@@ -18,3 +18,9 @@ re/ghidra/*_decomp.c
 # Art decoded from your own original files (never committed)
 assets-local/
 re/emu/logs/
+
+# Pages build output (cloudflare/build.sh)
+cloudflare/public/
+cloudflare/lib/core.wasm
+cloudflare/.dev.vars
+cloudflare/.wrangler/
