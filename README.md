@@ -118,3 +118,5 @@ Findings and addresses are in [`re/NOTES.md`](re/NOTES.md).
 
 «Кинг» © 1993 Дмитрий Башуров (Bady), Arzamas-16; published by «Комсомольская правда». This
 is an unofficial fan reimplementation for preservation; no original game files are distributed.
+
+The code of this port is under the [BSD 3-Clause License](LICENSE).
