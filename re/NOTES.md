@@ -32,6 +32,10 @@ abf724f9d819115a89170802a9c3b9bf31e0159dc8cfb7df918db7acbfb07c09  KING.HLP   = K
 - Video: `InitGraph(EGA, EGAHi)`, 640x350x16, two pages (`a000:0000` shown, `a000:7d00` back
   buffer); most drawing is direct EGA write-mode-2 / latch copies, Graph is used only for bars,
   lines and rectangles.
+- Ghidra shows Pascal calls with the arguments in **reverse** source order (Pascal pushes left
+  to right): `Bar(0x14f, 0x27f, 0, 0)` in the dump is `Bar(0, 0, 639, 335)`, `SetPalette(0x14, 4)`
+  is `SetPalette(4, $14)`. The same holds for the game's own procedures; a harness that calls them
+  directly must push in source order (first argument first) and the callee pops.
 - Mouse via `Intr($33)` with registers at `ds:08de` (`ds:051e` = mouse present).
 
 ## Random numbers
@@ -96,17 +100,39 @@ password, pick 3 of 12 partners), then 14 deals `deal_no` (`ds:0746`) = 0..13, t
 
 ## AI (`ai_choose_card` 0e88, `ai_search` 0afd, `ai_trick_value` 0901)
 
-The computer sees every hand (the partner cards say "ОН ВСЕГДА МУХЛЮЕТ"). It runs a full
-minimax over the remaining cards: the AI player minimises its own score, every other player is
-assumed to maximise it (paranoid search). Depth in tricks from `trick_no` (`ds:0740`): tricks
-0..3 → 2, 4..5 → 3, 6 → 2, 7..8 → 1 [**verify** the exact cut-off and what a depth of "n"
-means: the search stops when `tricks completed == depth`]. Values come from `ai_trick_value`,
-the price of the finished trick under the current contract (negated in the "take" half).
-Ties keep the first (lowest-index) card. The choice of partner does not affect play **[verify]**
-(no reference to `ds:05e4..05e8` in the AI).
+The computer sees every hand (the partner cards say "ОН ВСЕГДА МУХЛЮЕТ").
 
-The search copies all hands (80 bytes) per node. Some branches use `SetIn` results that Ghidra
-drops (`bVar = true` artifacts): read those in the disassembly.
+`ai_choose_card(p)`:
+
+1. Search depth in tricks from `trick_no` (`ds:0740`): tricks 0..3 → 2, 4..5 → 3, 6 → 2,
+   7..8 → 1 **[verify]** the exact meaning of a depth (the search stops when the number of
+   tricks completed inside the search equals it).
+2. With one card left, play it.
+3. Leading in contracts {1, 5, 6}: only non-hearts are candidates if the hand has any
+   (set at `1000:0e68`).
+4. Following: take the highest card of the led suit. If there is one and it is **lower than
+   the current best card of the trick, play it at once** (no search: duck with the highest
+   card that cannot win). If there is one otherwise, only led-suit cards are candidates.
+5. Otherwise run `ai_search` for each candidate in hand order and keep the lowest value;
+   ties keep the first.
+
+`ai_search` is a plain minimax over all four real hands: at player `p`'s turns the value is
+minimised, at everyone else's maximised (paranoid). It applies the same follow-suit and
+no-hearts-lead rules, tracks the trick winner, and at the end of each trick adds
+`ai_trick_value` to the winner's running score. It returns `p`'s score. The whole state
+(80 bytes) is copied per node.
+
+`ai_trick_value` (`0901`) is **not** the real scoring (`score_trick`, `1740`). The port must
+copy it as it is:
+- the prices are fixed in code (20 / 20 / 20 / 40 / 160), not `item_price`;
+- contract 4 ("2 ПОСЛЕДНИЕ") is valued as 20 for *every* trick, not 80 for tricks 7 and 8;
+- contract 6 (ералаш) has no last-two part (20 per trick, 20 per heart, 20 per boy, 40 per
+  queen, 160 for the K♥);
+- the value is positive in deals 0..6 and negated in 7..13, so `p` always minimises.
+
+Some branches test `SetIn` results that Ghidra drops (`bVar = true` artifacts); read those in
+the disassembly. The choice of partner does not affect play **[verify]** (no reference to
+`ds:05e4..05e8` in the AI).
 
 ## Login and KING.OVL
 
