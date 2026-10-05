@@ -6,7 +6,7 @@ protection (Komsomolka subscription index at login) is left out of the port; it 
 numbers.
 
 Addresses are Ghidra `segment:offset` with the image loaded at segment `1000`. Symbol names live
-in `ghidra/names_king.txt` (KING2 names to follow). Items marked **[verify]** still need a check
+in `ghidra/names_king.txt` and `ghidra/names_king2.txt`. Items marked **[verify]** still need a check
 (emulator or DOSBox-X).
 
 ## The original
@@ -57,7 +57,8 @@ abf724f9d819115a89170802a9c3b9bf31e0159dc8cfb7df918db7acbfb07c09  KING.HLP   = K
   - `title_screen` (`294d`): `Random(3)` x 2 per column of the torn-paper edge (335 columns).
   - `game_over` (`450e`): `Random(70)`, `Random(25)`, `Random(2)`, `Random(50)` for the coins.
   The human's cursor and the animations consume random numbers, so the deck order depends on
-  input timing; a replay must record the seed at each `deal`. **[verify]** in the emulator.
+  input timing; a replay must record every keyboard poll (confirmed: `re/emu/record.py` logs the
+  polls and `tests/difftest.py` reproduces the original's random stream from them).
 
 ## Cards
 
