@@ -1,0 +1,3 @@
+# KING2.EXE (full variant, v1.1) symbol names. Same format as names_king.txt.
+# Segments: 1000 main program, 1871 Graph, 1ba3 Crt, 1c05 System, DGROUP 1d2e.
+dseg 1d2e

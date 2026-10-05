@@ -1,0 +1,145 @@
+# KING.EXE / KING2.EXE reverse-engineering notes
+
+Addresses are Ghidra `segment:offset` with the image loaded at segment `1000`. Symbol names live
+in `ghidra/names_king.txt` (KING2 names to follow). Items marked **[verify]** still need a check
+(emulator or DOSBox-X).
+
+## The original
+
+"Кинг" by Дмитрий (В.) Башуров ("Bady"), Arzamas-16 (RFNC-VNIIEF), August 1993, distributed
+with *Комсомольская правда* (the title page reads "«Комсомольская правда» дарит своим дорогим
+читателям старую добрую карточную игру под названием KING").
+
+```
+f8138fec4fa888f7f0c875660e55fb2c44d7263f50fd6718690dba02649d091e  KING.EXE   v1.7 "Короткий вариант"
+a86179169d78e7976e15f0ed64e80187dde40d4a33d176c699e3301e5c7ae19e  KING2.EXE  v1.1 "Полный вариант"
+627e4fe496a985d8c6cc43bba5a89e7b6947093cff9bf3f77effe89723054dbe  KING.LIB   sprites
+c97a2a69ebe88577d7453408bf92a1739ed6d7b5a8c010f1d3078b5b9c9dd364  KING.FNT   fonts
+abf724f9d819115a89170802a9c3b9bf31e0159dc8cfb7df918db7acbfb07c09  KING.HLP   = KING2.HLP
+```
+
+`KING.OVL` is not code: it is the player registry the game writes (see below). The copy in
+`original/` is a 1997 snapshot of someone's club; the port starts with an empty one.
+
+## Binary layout
+
+- Turbo Pascal, not packed, no overlays. Units, one code segment each:
+  `1000` main program, `17a6` Graph (EGAVGA 2.00 BGI driver linked in), `1aca` Dos (`Intr`,
+  `GetDate`), `1ad8` Crt, `1b3a` System. DGROUP = `1c63` (load-relative `0c63`).
+  KING2: `1871` Graph, `1ba3` Crt, `1c05` System, DGROUP `1d2e`; main program is 3.4 KB larger.
+- Compiler version: `Random(N)` reduces with `div` (high word mod N), which is TP 5.x/6.0, not
+  7.0. **[verify]** exact version from the System init / heap variables.
+- Video: `InitGraph(EGA, EGAHi)`, 640x350x16, two pages (`a000:0000` shown, `a000:7d00` back
+  buffer); most drawing is direct EGA write-mode-2 / latch copies, Graph is used only for bars,
+  lines and rectangles.
+- Mouse via `Intr($33)` with registers at `ds:08de` (`ds:051e` = mouse present).
+
+## Random numbers
+
+- `Randomize` (`1b3a:0a12`) is called once at start: `RandSeed` (`ds:0418`) = DOS time
+  (`int 21h/2Ch`, CX:DX).
+- `NextRand` (`1b3a:09da`): `RandSeed = RandSeed * 0x08088405 + 1` (32-bit).
+- `Random(N)` (`1b3a:098b`): `NextRand`, then `(RandSeed >> 16) mod N` (0 if N = 0).
+- Every `Random` call in the program, so the port draws the same stream:
+  - `deal` (`5c50`): 1000 x (`Random(32)`, `Random(32)`) swaps.
+  - `human_choose_card` (`1157`): initial cursor `Random(n)` (repeated until it is on the led suit
+    if the human can follow), and a cosmetic `Random(20) == 19` blink every frame while waiting.
+  - `money_rain` (`27f2`): `Random(40)` / `Random(2)` per falling note (title, login, end).
+  - `title_screen` (`294d`): `Random(3)` x 2 per column of the torn-paper edge (335 columns).
+  - `game_over` (`450e`): `Random(70)`, `Random(25)`, `Random(2)`, `Random(50)` for the coins.
+  The human's cursor and the animations consume random numbers, so the deck order depends on
+  input timing; a replay must record the seed at each `deal`. **[verify]** in the emulator.
+
+## Cards
+
+- `card = suit * 13 + rank`, suit 0 ♦, 1 ♣, 2 ♠, 3 ♥; rank 0..12 = 2..A. The deck has 32 cards
+  (ranks 5..12 = 7..A): `deck[i] = i % 8 + 5 + (i / 8) * 13`. Hearts are cards ≥ 39 (`> 0x27`),
+  the king of hearts is 50 (`0x32`), queens have `rank == 10`, "boys" have `rank in [9, 11]`
+  (J, K).
+- Sprite index = card number (KING.LIB keeps empty slots for 2..6); the back is `ds:0002` = 54.
+- Players 1..4: 1 left, 2 top, 3 right, 4 the human (bottom). Per player `p`, 20-byte rows of
+  words: `ds:0682 + 20p` = `[0]` count, `[1..8]` cards, `[9]` (`ds:0694 + 20p`) the card on the
+  table this trick; `ds:06d2 + 20p` = screen x of each card. (So the human's hand starts at
+  `ds:06d2`, and `ds:0722` are its x positions.)
+
+## Game flow (KING.EXE, short variant)
+
+`main` (`6388`): `Randomize`, `load_resources`, `init_graphics`, `title_and_login` (registration,
+password, pick 3 of 12 partners), then 14 deals `deal_no` (`ds:0746`) = 0..13, then `game_over`.
+
+- Deal: `deal` builds and shuffles the deck, then deals 32 cards one at a time starting with
+  player `dealer_counter % 4 + 1` (`ds:0738`, +1 per card and +1 per deal, never reset), each
+  card animated. The human's hand is sorted (selection sort by card number). The first leader
+  is `ds:073a` = `ds:0738` after dealing, i.e. the player who got the first card (32 ≡ 0 mod 4).
+- Contract = `deal_no % 7`; deals 0..6 are "не брать" (price negative), 7..13 "брать" (price
+  positive). `items_left` (`ds:073c`) counts the penalty items; the deal ends when it is 0 (so
+  "Кинг" ends as soon as the K♥ falls).
+
+| # | Name          | Item                       | Price | Items |
+|---|---------------|----------------------------|-------|-------|
+| 0 | ВЗЯТКИ        | each trick                 | 20    | 8     |
+| 1 | ЧЕРВИ         | each heart                 | 20    | 8     |
+| 2 | МАЛЬЧИКИ      | each J, K                  | 20    | 8     |
+| 3 | ДЕВОЧКИ       | each Q                     | 40    | 4     |
+| 4 | 2 ПОСЛЕДНИЕ   | tricks 7 and 8             | 80    | 2     |
+| 5 | КИНГ          | K♥                         | 160   | 1     |
+| 6 | ВСЕ ПОДРЯД    | all of the above (ералаш)  | 20 per trick + 20/heart + 20/boy + 40/queen + 80/last-two trick + 160/K♥ | 8 tricks |
+
+- Play: `play_deal` (`61f4`) loops `play_card(leader_counter % 4 + 1)`; the trick's best card is
+  `trick_best` (`ds:0744`, card + 256 * player): replaced when the new card is the same suit as
+  the led card and higher. No trumps. After four cards `finish_trick` (`1a56`) takes the
+  highest card of the led suit, `score_trick` (`1740`) adds the price to `deal_score[winner]`,
+  and the winner leads (`ds:073a` = winner - 1).
+- Rules enforced for both the human and the AI: follow suit; in contracts {1, 5, 6} (hearts,
+  king, eralash) hearts may not be led while holding another suit (set at `1000:1137`).
+- `deal_summary` (`3f01`) adds `deal_score` to `total_score` (`ds:05da`).
+
+## AI (`ai_choose_card` 0e88, `ai_search` 0afd, `ai_trick_value` 0901)
+
+The computer sees every hand (the partner cards say "ОН ВСЕГДА МУХЛЮЕТ"). It runs a full
+minimax over the remaining cards: the AI player minimises its own score, every other player is
+assumed to maximise it (paranoid search). Depth in tricks from `trick_no` (`ds:0740`): tricks
+0..3 → 2, 4..5 → 3, 6 → 2, 7..8 → 1 [**verify** the exact cut-off and what a depth of "n"
+means: the search stops when `tricks completed == depth`]. Values come from `ai_trick_value`,
+the price of the finished trick under the current contract (negated in the "take" half).
+Ties keep the first (lowest-index) card. The choice of partner does not affect play **[verify]**
+(no reference to `ds:05e4..05e8` in the AI).
+
+The search copies all hands (80 bytes) per node. Some branches use `SetIn` results that Ghidra
+drops (`bVar = true` artifacts): read those in the disassembly.
+
+## Login and KING.OVL
+
+`login` (`243f`) asks for the "subscription index" of Komsomolskaya Pravda (`50057`, 3 tries,
+else quit: the copy protection, compared case-insensitively), then name and 4-character
+password. KING.OVL is a `file of` 32-byte records:
+
+| Offset | Type       | Field                                         |
+|--------|------------|-----------------------------------------------|
+| 0      | string[12] | name, chars XOR 0x1A                          |
+| 13     | string[4]  | password, chars XOR 0x1A                      |
+| 18     | 8 bytes    | unused                                        |
+| 26     | longint    | balance ("лицевой счёт", dollars in the chronicle) |
+| 30     | word       | games played                                  |
+
+`game_over` (`450e`) adds the human's total to the balance, rewrites the record, prints the
+"СВЕТСКАЯ ХРОНИКА" society column and the top 9 of "НАШИ МИЛЛИОНЕРЫ".
+
+## Data files
+
+- `KING.LIB`: 128-byte header (`[0]` = 72 entries, `[1..72]` size of each in 128-byte records),
+  then the sprites. Sprite: `u16 width, u16 height, u16 ?`, then per row `u16 length` and RLE
+  (`b ≥ 0x80`: `b - 0x80` copies of the next byte; else `b` literal bytes), one byte per pixel.
+  Drawn by `put_sprite` (`6430`) with a transparent colour argument. Contents: 32 cards, back,
+  partner portraits (3 strips of 4 and a 12-face grid), logos, money, hands.
+- `KING.FNT`: three 8-pixel-wide fonts of 256 glyphs, 6, 8 and 14 rows (1536 + 2048 + 3584
+  bytes), CP866.
+- `KING.HLP`: CP866 text shown on the title page (author, rules).
+- `re/tools/king.py` decodes all three (and the OVL).
+
+## KING2.EXE (full variant)
+
+Same engine. Per player a list of the 14 games (`ds:0500 + p*30`, count `ds:051c + p*30` = 14);
+the deal loop runs until all four counts are 0 (56 deals). Before each deal the player whose
+turn it is picks a game it has not played yet (`60cd`, "НЕ БРАТЬ / БРАТЬ" grid for the human,
+"Выбираю..." for the computer). **[todo]** the AI's choice rule and whose turn it is.

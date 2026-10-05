@@ -1,0 +1,21 @@
+# Python tooling of the reconstruction (re/tools, re/emu): data decoders and, later, the emulator
+# harness that runs the original next to the core. Nothing here is needed to build or play.
+#
+#   uv sync          the environment (.venv)
+[project]
+name = "king-tools"
+version = "0.0.1"
+description = "Reverse-engineering and differential-test tools for KING (1993)"
+requires-python = ">=3.12"
+dependencies = [
+    "unicorn>=2.1",    # the x86 emulator the original runs in
+    "capstone>=5.0",   # disassembler
+    "pillow>=10",      # re/tools/king.py contact sheets
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
