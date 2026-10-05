@@ -67,7 +67,3 @@ static void push(int hz, int ms)
 
 void audio_beep(int hz, int ms) { push(hz, ms); }
 
-void audio_sweep(int hz, int n, int step, int ms)
-{
-    for (int i = 0; i < n; i++) push(hz + i * step, ms);
-}

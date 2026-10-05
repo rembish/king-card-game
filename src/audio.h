@@ -5,7 +5,5 @@
 void audio_init(void);
 void audio_resume(void);
 void audio_beep(int hz, int ms);
-/* n tones from hz, each `step` Hz higher (or lower), `ms` long */
-void audio_sweep(int hz, int n, int step, int ms);
 
 #endif

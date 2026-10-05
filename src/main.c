@@ -40,6 +40,7 @@ static SDL_Window *win;
 static SDL_Renderer *ren;
 static SDL_Texture *screen;
 static int running = 1;
+static int ignore_text; /* the key that left the title page must not be typed into the name */
 
 static kg_game G;
 static club_t club;
@@ -49,13 +50,14 @@ static int npartners;
 
 static int sc = SC_TITLE, ph;
 static Uint32 now, ph_t0, poll_t;
-static int demo; /* the computer plays the human's seat too */
+static int demo;                 /* the computer plays the human's seat too */
+static const char *replay_polls; /* --replay: the polls come from here, no display */
 
 /* keys waiting for the next poll */
 static int keyq[64], nkeys;
-/* every poll of the game, for a replay: . _ K M H P, a.. = pick */
-static char polls[200000];
-static int npolls;
+/* every poll of the game (kg_poll_token), for a replay */
+static char *polls;
+static size_t npolls, polls_cap;
 
 /* what is on the screen */
 static int16_t hx[KG_HAND + 1]; /* x of each card in the human's hand */
@@ -107,15 +109,47 @@ static int pop_key(void)
 
 static void log_poll(int key)
 {
-    char c = '.';
-    if (key == KG_KEY_SPACE) c = '_';
-    else if (key == KG_KEY_LEFT) c = 'K';
-    else if (key == KG_KEY_RIGHT) c = 'M';
-    else if (key == KG_KEY_UP) c = 'H';
-    else if (key == KG_KEY_DOWN) c = 'P';
-    else if (key >= KG_KEY_PICK(0)) c = (char)('a' + key - KG_KEY_PICK(0));
-    if (npolls < (int)sizeof polls - 1) polls[npolls++] = c;
+    if (npolls + 2 > polls_cap) {
+        polls_cap = polls_cap ? polls_cap * 2 : 1 << 16;
+        polls = realloc(polls, polls_cap);
+        if (!polls) {
+            fprintf(stderr, "king: out of memory\n");
+            exit(1);
+        }
+    }
+    polls[npolls++] = kg_poll_token(key);
+    polls[npolls] = 0;
 }
+
+/* the key for one poll of the human's loops */
+static int poll_key(void)
+{
+    if (replay_polls) {
+        int k = *replay_polls ? kg_poll_key(*replay_polls++) : -1;
+        if (k < 0) {
+            fprintf(stderr, "king: replay polls exhausted or bad\n");
+            exit(2);
+        }
+        return k;
+    }
+    int k = pop_key();
+    if (k >= K_ENTER) k = k == K_ENTER ? KG_KEY_SPACE : KG_KEY_OTHER;
+    return k;
+}
+
+/* Port decision: after a pause longer than a second (a hidden tab, a stalled machine) the
+ * polls resume from now instead of catching up thousands at once. The log records exactly
+ * the polls made, so a replay is unaffected. */
+static int poll_due(void)
+{
+    if (replay_polls) return 1;
+    if (now - poll_t > 1000) poll_t = now - POLL_MS;
+    if (now - poll_t < POLL_MS) return 0;
+    poll_t += POLL_MS;
+    return 1;
+}
+
+static int auto_continue(void) { return demo || replay_polls; }
 
 /* ---- layout helpers ---- */
 
@@ -437,6 +471,7 @@ static void start_fly(int p, int idx_x, int card)
 static void next_turn(void)
 {
     if (kg_deal_done(&G)) {
+        nkeys = 0; /* deal_summary waits with wait_space_or_click, which flushes */
         set_phase(PH_SUMMARY);
         return;
     }
@@ -462,17 +497,15 @@ static void table_update(void)
 {
     switch (ph) {
     case PH_DEALING:
-        dealt = (int)((now - ph_t0) / 35);
+        dealt = auto_continue() ? KG_CARDS : (int)((now - ph_t0) / 35);
         if (dealt >= KG_CARDS) {
             dealt = KG_CARDS;
             after_deal();
         }
         break;
     case PH_CONTRACT_HUMAN:
-        while (now - poll_t >= POLL_MS) {
-            poll_t += POLL_MS;
-            int k = pop_key();
-            if (k >= K_ENTER) k = k == K_ENTER ? KG_KEY_SPACE : KG_KEY_OTHER;
+        while (poll_due()) {
+            int k = poll_key();
             log_poll(k);
             if (kg_contract_poll(&G, k)) {
                 contract_chosen();
@@ -482,13 +515,13 @@ static void table_update(void)
         }
         break;
     case PH_CONTRACT_AI:
-        if (now - ph_t0 > (demo ? 300u : 1500u) || pop_key()) contract_chosen();
+        if (now - ph_t0 > (auto_continue() ? 0u : 1500u) || pop_key()) contract_chosen();
         break;
     case PH_CONTRACT_SHOW:
-        if (now - ph_t0 > 700) next_turn();
+        if (now - ph_t0 > (auto_continue() ? 0u : 700u)) next_turn();
         break;
     case PH_AI_THINK:
-        if (now - ph_t0 > (demo ? 60u : 380u)) {
+        if (now - ph_t0 > (auto_continue() ? 0u : 380u)) {
             int p = kg_turn(&G), i = kg_ai_choose(&G, p);
             int x = p == 4 ? hx[i] : (i - 1) * 12;
             int card = G.hands[p][i];
@@ -498,10 +531,8 @@ static void table_update(void)
         }
         break;
     case PH_HUMAN:
-        while (now - poll_t >= POLL_MS) {
-            poll_t += POLL_MS;
-            int k = pop_key();
-            if (k >= K_ENTER) k = k == K_ENTER ? KG_KEY_SPACE : KG_KEY_OTHER;
+        while (poll_due()) {
+            int k = poll_key();
             log_poll(k);
             int card_i = k >= KG_KEY_PICK(1) ? k - KG_KEY_PICK(0) : G.cursor;
             int16_t x = hx[card_i];
@@ -516,7 +547,7 @@ static void table_update(void)
         }
         break;
     case PH_FLY:
-        if (now - ph_t0 >= 220) {
+        if (now - ph_t0 >= (auto_continue() ? 0u : 220u)) {
             int p = G.current;
             table_card[p] = G.hands[p][9];
             kg_after_card(&G);
@@ -528,19 +559,22 @@ static void table_update(void)
         }
         break;
     case PH_TRICK_WAIT:
-        if (pop_key() || demo) {
-            audio_sweep(20, 400, 20, 15);
+        if (pop_key() || auto_continue()) {
+            for (int i = 1; i <= 20; i++) { /* finish_trick */
+                audio_beep(i * 20, 2);
+                audio_beep(0, i / 2 + 1);
+            }
             set_phase(PH_TRICK_TAKE);
         }
         break;
     case PH_TRICK_TAKE:
-        if (now - ph_t0 > (demo ? 100u : 700u)) {
+        if (now - ph_t0 > (auto_continue() ? 0u : 700u)) {
             memset(table_card, 0, sizeof table_card);
             next_turn();
         }
         break;
     case PH_SUMMARY:
-        if (pop_key() || (demo && now - ph_t0 > 300)) {
+        if (pop_key() || auto_continue()) {
             kg_end_deal(&G);
             if (kg_game_over(&G))
                 game_over();
@@ -551,9 +585,9 @@ static void table_update(void)
     }
 }
 
-static void start_game(void)
+static void start_game(uint32_t seed)
 {
-    kg_new_game(&G, (uint32_t)time(NULL) ^ (uint32_t)SDL_GetPerformanceCounter());
+    kg_new_game(&G, seed);
     npolls = 0;
     sc = SC_TABLE;
     start_deal();
@@ -625,7 +659,11 @@ static void key(SDL_Keysym ks)
         return;
     }
     switch (sc) {
-    case SC_TITLE: sc = SC_NAME; SDL_StartTextInput(); break;
+    case SC_TITLE:
+        sc = SC_NAME;
+        ignore_text = 1;
+        SDL_StartTextInput();
+        break;
     case SC_NAME:
         if (k == K_BACKSPACE) {
             size_t n = strlen(name_buf);
@@ -685,8 +723,11 @@ static void partners_update(void)
         return;
     }
     partner[++npartners] = cell;
-    audio_sweep(500, 400, -10, 10);
-    if (npartners == 3) start_game();
+    for (int i = 1; i <= 10; i++) { /* choose_partners */
+        audio_beep(500 - 10 * i, i / 5 + 2);
+        audio_beep(0, 2);
+    }
+    if (npartners == 3) start_game((uint32_t)time(NULL) ^ (uint32_t)SDL_GetPerformanceCounter());
 }
 
 /* ---- frame ---- */
@@ -732,7 +773,7 @@ static void frame(void)
             audio_resume();
             key(e.key.keysym);
         }
-        if (e.type == SDL_TEXTINPUT) text_input(e.text.text);
+        if (e.type == SDL_TEXTINPUT && !ignore_text) text_input(e.text.text);
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             audio_resume();
             int x, y;
@@ -740,6 +781,7 @@ static void frame(void)
             click(x, y);
         }
     }
+    ignore_text = 0;
     now = SDL_GetTicks();
     if (sc == SC_PARTNERS) partners_update();
     if (sc == SC_TABLE) table_update();
@@ -798,6 +840,30 @@ static int shot(const char *file, const char *what)
     return r;
 }
 
+/* --replay SEED POLLS: play a whole game headless through the frontend's own paths, the
+ * human's keys taken from POLLS; prints the totals and the polls made (tests/frontend.py) */
+static int replay(uint32_t seed, const char *p)
+{
+    replay_polls = p;
+    member = club_join(&club, "Replay", &member_new);
+    partner[1] = 0;
+    partner[2] = 5;
+    partner[3] = 10;
+    npartners = 3;
+    now = 1;
+    start_game(seed);
+    while (sc == SC_TABLE) {
+        now += 10;
+        table_update();
+    }
+    printf("%d %d %d %d\n%s\n", G.total[1], G.total[2], G.total[3], G.total[4], polls ? polls : "");
+    if (*replay_polls) {
+        fprintf(stderr, "king: %zu replay polls left over\n", strlen(replay_polls));
+        return 1;
+    }
+    return 0;
+}
+
 static int find_files(int argc, char **argv)
 {
     const char *dirs[8];
@@ -830,6 +896,12 @@ int main(int argc, char **argv)
             shot_what = argv[i + 2];
         }
         if (!strcmp(argv[i], "--demo")) demo = 1;
+        if (!strcmp(argv[i], "--replay") && i + 2 < argc) {
+            club_readonly = 1;
+            store_init();
+            club_load(&club);
+            return replay((uint32_t)strtoul(argv[i + 1], 0, 0), argv[i + 2]);
+        }
     }
     if (shot_file) {
         SDL_SetHint(SDL_HINT_VIDEODRIVER, "dummy");
@@ -859,7 +931,7 @@ int main(int argc, char **argv)
         partner[2] = 5;
         partner[3] = 10;
         npartners = 3;
-        start_game();
+        start_game((uint32_t)time(NULL));
     }
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(frame, 0, 1);
