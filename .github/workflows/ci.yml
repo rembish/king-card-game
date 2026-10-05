@@ -1,35 +1,98 @@
+# What can be checked without the original game: the build (warnings are errors) with gcc and
+# clang, under the sanitizers, the web build, formatting, clang-tidy, the Python tooling's lint
+# and types, and the three games recorded from the original (tests/fixtures) through the core,
+# the frontend and the server. Recording more games needs your copy of KING (see README).
 name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
+  workflow_call: # the deploy workflow runs these checks first
 
 permissions:
   contents: read
 
 jobs:
-  native:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install SDL2
+      - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
-      - name: Build
+      - name: Build (warnings are errors)
+        env:
+          CC: ${{ matrix.cc }}
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -DKG_WERROR=ON
           cmake --build build -j
-      - name: Recorded games (tests/fixtures, recorded from the original)
+      - name: Recorded games through the core and the frontend
+        run: tests/fixtures.sh build
+      - name: Smoke test (no game files)
         run: |
-          python3 - <<'PY'
-          import json, subprocess, sys
-          bad = 0
-          for g in json.load(open('tests/fixtures/games.json')):
-              want = ' '.join(['0'] + [str(t) for t in g['totals']])
-              got = subprocess.run(['build/verify', str(g['seed']), g['polls']], capture_output=True, text=True).stdout.strip()
-              rep = subprocess.run(['build/king', '--replay', str(g['seed']), g['polls']], capture_output=True, text=True).stdout.split('\n')
-              ok = got == want and rep[0] == ' '.join(str(t) for t in g['totals']) and rep[1] == g['polls']
-              print(g['seed'], 'OK' if ok else f'FAIL {got} / {rep[0]}')
-              bad += not ok
-          sys.exit(bad)
-          PY
+          # without KING.LIB the game says what it needs and exits 1
+          set +e
+          ./build/king /nonexistent 2> err.txt
+          code=$?
+          set -e
+          cat err.txt
+          test "$code" = 1 && grep -q "KING.LIB" err.txt
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Build with AddressSanitizer and UBSan (errors stop the run)
+        run: |
+          cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all"
+          cmake --build build-san -j
+      - name: Recorded games
+        run: tests/fixtures.sh build-san
+
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build (Emscripten: the game and the server's core)
+        run: cloudflare/build.sh
+      - name: The server's tests
+        run: node --test cloudflare/test.mjs
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format and clang-tidy 21 (the versions the code is checked with)
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh && sudo bash llvm.sh 21 && rm llvm.sh
+          sudo apt-get install -y clang-format-21 clang-tidy-21 libsdl2-dev
+      - name: clang-format
+        run: clang-format-21 --dry-run --Werror core/*.c core/*.h src/*.c src/*.h tests/*.c
+      - name: clang-tidy
+        run: |
+          cmake -S . -B build
+          clang-tidy-21 -p build --quiet core/*.c src/*.c tests/*.c
+
+  python:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Environment
+        run: uv sync --extra dev
+      - name: Format
+        run: uv run ruff format --check re tests
+      - name: Lint
+        run: uv run ruff check re tests
+      - name: Types
+        run: uv run mypy
