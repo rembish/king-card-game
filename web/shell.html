@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#00aa00">
+<title>KING — Кинг (1993)</title>
+<style>
+  :root { --fg: #e8f0e8; --dim: #9fb89f; --accent: #ffff55; --panel: #063a06; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  #canvas { display: none; width: 100vw; height: 100vh; height: 100dvh; object-fit: contain; outline: none; }
+  body.playing #canvas { display: block; }
+  body.playing #intro { display: none; }
+  #intro { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
+  h1 { margin: 0; font-size: 34px; letter-spacing: .08em; color: var(--accent); }
+  h1 + p { margin-top: 2px; color: var(--dim); }
+  .box { background: var(--panel); border: 1px solid #0f6a0f; border-radius: 10px; padding: 16px 18px; margin: 18px 0; }
+  .box h2 { margin: 0 0 8px; font-size: 16px; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 10px 16px; margin: 6px 8px 0 0; cursor: pointer;
+           background: var(--accent); color: #111; font-weight: 600; }
+  button.quiet { background: #0f6a0f; color: var(--fg); font-weight: 400; }
+  #status { min-height: 1.5em; color: var(--accent); }
+  #status.error { color: #ff7a7a; }
+  kbd { background: #0f6a0f; border-radius: 4px; padding: 0 5px; font-size: 13px; }
+  a { color: var(--accent); }
+  small { color: var(--dim); }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<div id="intro">
+  <h1>KING · КИНГ</h1>
+  <p>Д. Башуров, Арзамас-16, 1993 — the card game «Комсомольская правда» gave its readers,
+    reconstructed from <code>KING2.EXE</code> (the full variant) and played by the same rules,
+    the same computer partners and the same shuffles.</p>
+
+  <div class="box" id="stored" hidden>
+    <h2>Ready</h2>
+    <p>The game's pictures are in this browser from an earlier visit.</p>
+    <button id="play">Play</button>
+    <button class="quiet" id="forget">Forget the stored files</button>
+  </div>
+
+  <div class="box" id="fetch" hidden>
+    <h2>The game's pictures</h2>
+    <p>This page contains no part of the original game. It draws with the original's cards,
+      faces and fonts, two files of it: <code>KING.LIB</code> and <code>KING.FNT</code> (90 KB).
+      Choose them from your copy of the game, or the zip of it as it is — for example
+      <code>King_DOS_RU.zip</code> from
+      <a href="https://www.myabandonware.com/game/king-c1a" target="_blank" rel="noopener">MyAbandonware</a>.
+      They stay in this browser's storage and are never sent anywhere.</p>
+    <button id="own">Choose the files or the zip…</button>
+    <input type="file" id="files" multiple accept=".lib,.LIB,.fnt,.FNT,.zip,.ZIP" hidden>
+    <p><small>Or drop them on this page.</small></p>
+  </div>
+
+  <p id="status"></p>
+
+  <div class="box">
+    <h2>Как играть · How to play</h2>
+    <p>Four players, 32 cards, eight each. Follow suit if you can; the highest card of the suit
+      led takes the trick. Each player in turn, once they have seen their cards, chooses one of
+      the 14 games none of them has played yet: seven «не брать» (don't take: tricks, hearts, the
+      J and K «мальчики», the queens «девочки», the last two tricks, the king of hearts, or all of
+      them at once) and the same seven «брать» (take them). 56 deals in all.</p>
+    <p><kbd>←</kbd> <kbd>→</kbd> choose a card, <kbd>Space</kbd> play it (or click the card).
+      In the game grid <kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd> and <kbd>Space</kbd>, or a click.
+      <kbd>Space</kbd> or a click after each trick. <kbd>Esc</kbd> back to the title,
+      <kbd>F11</kbd> full screen.</p>
+  </div>
+  <p><small>Source code and notes: <a href="https://github.com/rembish/king-card-game">github.com/rembish/king-card-game</a>.
+    The club's members and their balances stay in this browser.</small></p>
+</div>
+<script>
+  var NEEDED = ['KING.LIB', 'KING.FNT'];
+  var $ = function (id) { return document.getElementById(id); };
+  var errors = [];
+
+  function status(text, error) {
+    $('status').textContent = text || '';
+    $('status').className = error ? 'error' : '';
+  }
+
+  function have(name) { try { FS.stat('/game/' + name); return true; } catch (e) { return false; } }
+
+  function show() {
+    var ready = NEEDED.every(have);
+    $('stored').hidden = !ready;
+    $('fetch').hidden = ready;
+  }
+
+  function start() {
+    errors = [];
+    document.body.className = 'playing';
+    Module.canvas.focus();
+    Module.callMain(['/game']);
+  }
+
+  function persist(done) {
+    FS.syncfs(false, function (err) {
+      if (err) status('This browser would not keep the files (' + err + '): they are gone when the page closes.', true);
+      done();
+    });
+  }
+
+  var Module = {
+    canvas: $('canvas'),
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.warn(t); errors.push(t); },
+    onExit: function () { document.body.className = ''; status(errors.join(' '), true); show(); },
+    onRuntimeInitialized: function () {
+      FS.mkdir('/game');
+      FS.mount(IDBFS, {}, '/game');
+      FS.syncfs(true, function (err) {
+        if (err) status('Could not read this browser\'s storage (' + err + ').', true);
+        show();
+      });
+    }
+  };
+
+  // a zip's files: name -> bytes, deflated or stored
+  function unzip(buf) {
+    var dv = new DataView(buf), end = -1;
+    for (var i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--)
+      if (dv.getUint32(i, true) === 0x06054b50) { end = i; break; }
+    if (end < 0) return Promise.reject(new Error('not a zip'));
+    var at = dv.getUint32(end + 16, true), count = dv.getUint16(end + 10, true), parts = [];
+    for (var k = 0; k < count && dv.getUint32(at, true) === 0x02014b50; k++) {
+      var method = dv.getUint16(at + 10, true), size = dv.getUint32(at + 20, true);
+      var nlen = dv.getUint16(at + 28, true), local = dv.getUint32(at + 42, true);
+      var name = new TextDecoder().decode(new Uint8Array(buf, at + 46, nlen)).split('/').pop().toUpperCase();
+      var data = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+      var bytes = new Uint8Array(buf, data, size);
+      at += 46 + nlen + dv.getUint16(at + 30, true) + dv.getUint16(at + 32, true);
+      if (method === 0) parts.push(Promise.resolve([name, bytes]));
+      else if (method === 8) parts.push(new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')))
+        .arrayBuffer().then(function (n) { return function (b) { return [n, new Uint8Array(b)]; }; }(name)));
+    }
+    return Promise.all(parts);
+  }
+
+  function keep(f) {
+    var name = f.name.toUpperCase();
+    return f.arrayBuffer().then(function (b) {
+      if (/\.ZIP$/.test(name)) return unzip(b).then(function (all) {
+        all.forEach(function (p) { if (NEEDED.indexOf(p[0]) >= 0) FS.writeFile('/game/' + p[0], p[1]); });
+      });
+      if (NEEDED.indexOf(name) >= 0) FS.writeFile('/game/' + name, new Uint8Array(b));
+    });
+  }
+
+  function given(files) {
+    Promise.all(files.map(keep)).then(function () {
+      var missing = NEEDED.filter(function (n) { return !have(n); });
+      if (missing.length) { status('Still needed: ' + missing.join(', '), true); return; }
+      status('');
+      persist(start);
+    }).catch(function (e) { status('Could not read those files (' + e.message + ').', true); });
+  }
+
+  $('own').addEventListener('click', function () { $('files').click(); });
+  $('files').addEventListener('change', function () {
+    var files = Array.prototype.slice.call(this.files);
+    this.value = '';
+    given(files);
+  });
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop', function (e) {
+    e.preventDefault();
+    var files = Array.prototype.slice.call(e.dataTransfer.files);
+    if (files.length && typeof FS !== 'undefined' && document.body.className !== 'playing') given(files);
+  });
+  $('play').addEventListener('click', start);
+  $('forget').addEventListener('click', function () {
+    NEEDED.forEach(function (n) { if (have(n)) FS.unlink('/game/' + n); });
+    persist(show);
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (document.body.className !== 'playing') return;
+    if (/^(F([1-9]|1[0-2])|Arrow.*|Tab| |Backspace)$/.test(e.key)) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('pointerdown', function () { if (document.body.className === 'playing') Module.canvas.focus(); });
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

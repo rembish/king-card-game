@@ -21,9 +21,19 @@ add_executable(replay tests/replay.c)
 target_link_libraries(replay PRIVATE kgcore)
 
 # The game. It reads KING.LIB and KING.FNT from the player's own copy at run time.
-find_package(SDL2 REQUIRED)
 add_executable(king src/main.c src/res.c src/club.c src/store.c src/audio.c)
-target_link_libraries(king PRIVATE kgcore SDL2::SDL2)
-if(TARGET SDL2::SDL2main)
-  target_link_libraries(king PRIVATE SDL2::SDL2main)
+target_link_libraries(king PRIVATE kgcore)
+if(EMSCRIPTEN)
+  # The page (web/shell.html) puts the player's files in /game (IndexedDB) and then calls main.
+  target_compile_options(king PRIVATE -sUSE_SDL=2)
+  target_link_options(king PRIVATE -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sINVOKE_RUN=0 -sEXIT_RUNTIME=0
+    -sFORCE_FILESYSTEM=1 -lidbfs.js "-sEXPORTED_RUNTIME_METHODS=['callMain','FS','IDBFS']"
+    --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html)
+  set_target_properties(king PROPERTIES SUFFIX ".html")
+else()
+  find_package(SDL2 REQUIRED)
+  target_link_libraries(king PRIVATE SDL2::SDL2)
+  if(TARGET SDL2::SDL2main)
+    target_link_libraries(king PRIVATE SDL2::SDL2main)
+  endif()
 endif()
