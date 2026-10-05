@@ -25,3 +25,4 @@ cloudflare/lib/core.wasm
 cloudflare/.dev.vars
 cloudflare/.wrangler/
 build-wasm/
+clips/

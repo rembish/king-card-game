@@ -11,6 +11,7 @@ static struct {
 } q[QLEN];
 static int qhead, qtail;
 static double phase;
+static int offline;
 
 static void callback(void *u, Uint8 *stream, int len)
 {
@@ -52,8 +53,21 @@ void audio_resume(void)
     if (dev) SDL_PauseAudioDevice(dev, 0);
 }
 
+void audio_offline(void) { offline = 1; }
+
+void audio_render(short *out, int samples) { callback(NULL, (Uint8 *)out, samples * 2); }
+
 static void push(int hz, int ms)
 {
+    if (offline) {
+        int next = (qtail + 1) % QLEN;
+        if (next != qhead) {
+            q[qtail].hz = hz;
+            q[qtail].samples = RATE * ms / 1000;
+            qtail = next;
+        }
+        return;
+    }
     if (!dev) return;
     SDL_LockAudioDevice(dev);
     int next = (qtail + 1) % QLEN;

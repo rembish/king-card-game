@@ -52,6 +52,8 @@ static int npartners;
 static int sc = SC_TITLE, ph;
 static Uint32 now, ph_t0, poll_t;
 static int demo;                 /* the computer plays the human's seat too */
+static int watch;                /* ... at a human's pace, for a clip (--record) */
+static int think;                /* polls the demo's human has waited */
 static const char *replay_polls; /* --replay: the polls come from here, no display */
 
 /* keys waiting for the next poll */
@@ -136,7 +138,17 @@ static void log_poll(int key)
 /* the key for one poll of the human's loops */
 static int poll_key(void)
 {
-    if (demo) return KG_KEY_PICK(kg_ai_choose(&G, KG_HUMAN));
+    if (demo) {
+        if (watch && ++think < 18) return KG_KEY_NONE;
+        think = 0;
+        if (ph == PH_CONTRACT_HUMAN) {
+            int k;
+            do k = rand() % KG_GAMES;
+            while (G.played[KG_HUMAN][k]);
+            return KG_KEY_PICK(k);
+        }
+        return KG_KEY_PICK(kg_ai_choose(&G, KG_HUMAN));
+    }
     if (replay_polls) {
         int k = *replay_polls ? kg_poll_key(*replay_polls++) : -1;
         if (k < 0) {
@@ -155,14 +167,14 @@ static int poll_key(void)
  * the polls made, so a replay is unaffected. */
 static int poll_due(void)
 {
-    if (replay_polls || demo) return 1;
+    if (replay_polls || (demo && !watch)) return 1;
     if (now - poll_t > 1000) poll_t = now - POLL_MS;
     if (now - poll_t < POLL_MS) return 0;
     poll_t += POLL_MS;
     return 1;
 }
 
-static int auto_continue(void) { return demo || replay_polls; }
+static int auto_continue(void) { return (demo && !watch) || replay_polls; }
 static Uint32 demo_until; /* the demo waits this long for the club's seed */
 
 /* ---- layout helpers ---- */
@@ -220,7 +232,7 @@ static void draw_hands(void)
         return;
     }
     for (int i = 1; i <= h[0]; i++) res_sprite(h[i], hx[i], hand_y[4], 2);
-    if (ph == PH_HUMAN && !demo) {
+    if (ph == PH_HUMAN && (!demo || watch)) {
         int spr = G.blink == 0 ? SPR_HAND : (G.blink % 8 < 4 ? SPR_HAND_BLINK + 1 : SPR_HAND_BLINK);
         res_sprite(spr, hx[G.cursor] + 4, 0x142, 2);
     }
@@ -280,7 +292,7 @@ static void draw_grid(void)
         if (!G.played[decl][r]) res_sprite(SPR_SNICKERS, 0x120, 0x8a + r * 14, 2);
         if (!G.played[decl][7 + r]) res_sprite(SPR_MARS, 0x160, 0x8a + r * 14, 2);
     }
-    if (ph == PH_CONTRACT_HUMAN && !demo)
+    if (ph == PH_CONTRACT_HUMAN && (!demo || watch))
         res_sprite(SPR_HAND_BLINK, G.grid_half * 64 + 0x134, G.grid_row * 14 + 0x89, 2);
 }
 
@@ -448,7 +460,7 @@ static void after_deal(void)
 {
     decl = kg_declarer(&G);
     nkeys = 0;
-    if (decl == KG_HUMAN && !demo) {
+    if (decl == KG_HUMAN && (!demo || watch)) {
         kg_contract_begin(&G);
         poll_t = now;
         set_phase(PH_CONTRACT_HUMAN);
@@ -620,7 +632,7 @@ static void table_update(void)
         }
         break;
     case PH_TRICK_WAIT:
-        if (pop_key() || auto_continue()) {
+        if (pop_key() || auto_continue() || (watch && now - ph_t0 > 900)) {
             for (int i = 1; i <= 20; i++) { /* finish_trick */
                 audio_beep(i * 20, 2);
                 audio_beep(0, i / 2 + 1);
@@ -635,7 +647,7 @@ static void table_update(void)
         }
         break;
     case PH_SUMMARY:
-        if (pop_key() || auto_continue()) {
+        if (pop_key() || auto_continue() || (watch && now - ph_t0 > 2500)) {
             kg_end_deal(&G);
             if (kg_game_over(&G))
                 game_over();
@@ -955,6 +967,60 @@ static int replay(uint32_t seed, const char *p)
     return 0;
 }
 
+/* --record DIR SECONDS SEED: a clip of the demo at a human's pace, the title and the choice
+ * of partners first. Writes DIR/king.rgb (640x350 RGB frames, 30 per second) and DIR/king.s16
+ * (44100 Hz mono); tools/clips.sh makes the video. */
+static int record(const char *dir, int seconds, uint32_t seed)
+{
+    char path[1100];
+    snprintf(path, sizeof path, "%s/king.rgb", dir);
+    FILE *v = fopen(path, "wb");
+    snprintf(path, sizeof path, "%s/king.s16", dir);
+    FILE *a = fopen(path, "wb");
+    if (!v || !a) return 1;
+    audio_offline();
+    demo = watch = 1;
+    srand(seed);
+    member = club_join(&club, "Товарищ", &member_new);
+    static const int picks[3] = {0, 5, 10};
+    static unsigned char px[RES_W * SCALE * RES_H * SCALE * 4], rgb[RES_W * RES_H * 3];
+    static short pcm[AUDIO_RATE / 30 + 1];
+    int frames = seconds * 30;
+    for (int f = 0; f < frames; f++) {
+        now = (Uint32)(f * 1000 / 30);
+        if (f < 75)
+            sc = SC_TITLE;
+        else if (sc == SC_TITLE) {
+            sc = SC_PARTNERS;
+            npartners = 0;
+        }
+        if (sc == SC_PARTNERS) {
+            int k = (f - 75) / 25, cell = picks[k < 3 ? k : 2];
+            pcur_col = (f - 75) % 25 < 12 ? (k ? picks[k - 1] % 4 : 0) : cell % 4;
+            pcur_row = (f - 75) % 25 < 12 ? (k ? picks[k - 1] / 4 : 0) : cell / 4;
+            if ((f - 75) % 25 == 24 && npartners < 3) {
+                push_key(KG_KEY_SPACE);
+                partners_update();
+                if (npartners == 3) start_game(seed);
+            }
+        } else if (sc == SC_TABLE)
+            table_update();
+        render();
+        SDL_SetRenderTarget(ren, screen);
+        SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_RGBA32, px, RES_W * SCALE * 4);
+        for (int y = 0; y < RES_H; y++)
+            for (int x = 0; x < RES_W; x++)
+                memcpy(rgb + (y * RES_W + x) * 3, px + ((y * SCALE + 1) * RES_W * SCALE + x * SCALE + 1) * 4, 3);
+        fwrite(rgb, 1, sizeof rgb, v);
+        int n = AUDIO_RATE * (f + 1) / 30 - AUDIO_RATE * f / 30;
+        audio_render(pcm, n);
+        fwrite(pcm, 2, (size_t)n, a);
+    }
+    fclose(v);
+    fclose(a);
+    return 0;
+}
+
 static int find_files(int argc, char **argv)
 {
     const char *dirs[8];
@@ -980,13 +1046,21 @@ static int find_files(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    const char *shot_file = NULL, *shot_what = "title";
+    const char *shot_file = NULL, *shot_what = "title", *rec_dir = NULL;
+    int rec_seconds = 40;
+    uint32_t rec_seed = 1;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--shot") && i + 2 < argc) {
             shot_file = argv[i + 1];
             shot_what = argv[i + 2];
         }
         if (!strcmp(argv[i], "--demo")) demo = 1;
+        if (!strcmp(argv[i], "--record") && i + 3 < argc) {
+            rec_dir = argv[i + 1];
+            rec_seconds = atoi(argv[i + 2]);
+            rec_seed = (uint32_t)strtoul(argv[i + 3], 0, 0);
+            shot_file = "";
+        }
         if (!strcmp(argv[i], "--replay") && i + 2 < argc) {
             club_readonly = 1;
             store_init();
@@ -1013,6 +1087,7 @@ int main(int argc, char **argv)
     res_init(ren);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
     screen = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, RES_W * SCALE, RES_H * SCALE);
+    if (rec_dir) return record(rec_dir, rec_seconds, rec_seed);
     if (shot_file) return shot(shot_file, shot_what) == 0 ? 0 : 1;
     audio_init();
     srand((unsigned)time(NULL));
