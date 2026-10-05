@@ -37,7 +37,7 @@
     the same computer partners and the same shuffles.</p>
 
   <div class="box" id="stored" hidden>
-    <h2>Ready</h2>
+    <h2 id="welcome">Ready</h2>
     <p>The game's pictures are in this browser from an earlier visit.</p>
     <button id="play">Play</button>
     <button class="quiet" id="forget">Forget the stored files</button>
@@ -89,8 +89,20 @@
 
   function have(name) { try { FS.stat('/game/' + name); return true; } catch (e) { return false; } }
 
+  // a returning player: the name the game remembered (src/main.c, name.txt in localStorage)
+  function remembered() {
+    try {
+      var v = localStorage.getItem('king:name.txt');
+      if (!v) return '';
+      var s = atob(v), b = new Uint8Array(s.length);
+      for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+      return new TextDecoder().decode(b);
+    } catch (e) { return ''; }
+  }
+
   function show() {
-    var ready = NEEDED.every(have);
+    var ready = NEEDED.every(have), name = remembered();
+    $('welcome').textContent = name ? 'С возвращением, товарищ ' + name + '!' : 'Ready';
     $('stored').hidden = !ready;
     $('fetch').hidden = ready;
   }

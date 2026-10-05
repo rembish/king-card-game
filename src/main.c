@@ -72,6 +72,7 @@ static struct {
     int card, x0, y0, x1, y1, face;
 } fly;
 static char name_buf[CLUB_NAME * 2 + 1];
+static char remembered[CLUB_NAME * 2 + 1]; /* the name this browser / user joined with last */
 static int pcur_col, pcur_row;
 static char chron[CLUB_LINES][CLUB_LINE_LEN];
 static int nchron, game_total;
@@ -367,8 +368,17 @@ static void draw_title(void)
     res_text(FONT_8, 320 - 19 * 4, 258, 0, 8, "Полный вариант игры");
     res_text(FONT_8, 320 - 29 * 4, 268, 0, 8, "Версия 1.1 от 22 авг. 1993 г.");
     res_text(FONT_8, 320 - 31 * 4, 282, 0, 8, "(C) Дима Башуров из Арзамаса-16");
-    res_text(FONT_6, 320 - 37 * 3, 300, 8, 6, "Этот порт: правила по KING2.EXE, 2026");
-    if (now / 500 % 2) res_text(FONT_8, 320 - 23 * 4, 326, 4, 8, "Нажмите любую клавишу...");
+    if (!remembered[0]) res_text(FONT_6, 320 - 37 * 3, 300, 8, 6, "Этот порт: правила по KING2.EXE, 2026");
+    if (remembered[0]) {
+        char hello[96];
+        snprintf(hello, sizeof hello, "С возвращением, товарищ %s!", remembered);
+        res_text_shadow(FONT_14, 320 - res_text_len(hello) * 4, 306, 0, 15, 8, hello);
+        if (name_wait)
+            res_text(FONT_8, 320 - 16 * 4, 326, 4, 8, "Спрашиваю клуб...");
+        else if (now / 500 % 2)
+            res_text(FONT_8, 320 - 38 * 4, 326, 4, 8, "Любая клавиша - играть, F2 - другое имя");
+    } else if (now / 500 % 2)
+        res_text(FONT_8, 320 - 23 * 4, 326, 4, 8, "Нажмите любую клавишу...");
 }
 
 static void draw_name(void)
@@ -705,10 +715,29 @@ static void to_logical(int wx, int wy, int *x, int *y)
     *y = (int)(py * RES_H / dh);
 }
 
+/* Leaves the title page: a returning player goes on under the remembered name (the club checks
+ * it as if typed), F2 or a first visit asks for one. */
+static void leave_title(int other_name)
+{
+    if (remembered[0] && !other_name) {
+        snprintf(name_buf, sizeof name_buf, "%s", remembered);
+        msg = NULL;
+        net_claim(name_buf);
+        name_wait = 1;
+        return;
+    }
+    name_buf[0] = 0;
+    sc = SC_NAME;
+    ignore_text = 1;
+    SDL_StartTextInput();
+}
+
 static void click(int x, int y)
 {
     switch (sc) {
-    case SC_TITLE: sc = SC_NAME; break;
+    case SC_TITLE:
+        if (!name_wait) leave_title(0);
+        break;
     case SC_PARTNERS:
         for (int row = 0; row < 3; row++)
             for (int col = 0; col < 4; col++)
@@ -759,9 +788,7 @@ static void key(SDL_Keysym ks)
     }
     switch (sc) {
     case SC_TITLE:
-        sc = SC_NAME;
-        ignore_text = 1;
-        SDL_StartTextInput();
+        if (!name_wait) leave_title(ks.sym == SDLK_F2);
         break;
     case SC_NAME:
         if (k == K_BACKSPACE) {
@@ -829,11 +856,18 @@ static void name_update(void)
     name_wait = 0;
     if (r == NET_TAKEN) {
         msg = "Это имя в клубе уже занято. Выберите другое.";
+        if (sc != SC_NAME) { /* the remembered name: someone else has it now */
+            sc = SC_NAME;
+            name_buf[0] = 0;
+            SDL_StartTextInput();
+        }
         return;
     }
     SDL_StopTextInput();
     member = club_join(&club, name_buf, &member_new);
     club_save(&club);
+    snprintf(remembered, sizeof remembered, "%s", name_buf);
+    store_write("name.txt", remembered, (int)strlen(remembered));
     npartners = 0;
     net_new_game();
     sc = SC_PARTNERS;
@@ -923,7 +957,7 @@ static void frame(void)
             start_game(online ? seed : (uint32_t)time(NULL));
         }
     }
-    if (sc == SC_NAME && name_wait) name_update();
+    if (name_wait) name_update();
     if (sc == SC_OVER && result_wait) result_update();
     if (sc == SC_PARTNERS) partners_update();
     if (sc == SC_TABLE) table_update();
@@ -1124,6 +1158,10 @@ int main(int argc, char **argv)
     }
     store_init();
     club_load(&club);
+    {
+        int n = store_read("name.txt", remembered, (int)sizeof remembered - 1);
+        remembered[n > 0 ? n : 0] = 0;
+    }
     if (!find_files(argc, argv)) return 1;
     win = SDL_CreateWindow("KING", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 960,
                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
