@@ -120,15 +120,15 @@ def main() -> None:
         fonts = read_fnt()
         im = Image.new("RGB", (32 * 9, sum(8 * (r + 1) for r, _ in fonts)), (0, 0, 0))
         y0 = 0
-        for rows, data in fonts:
+        for height, data in fonts:
             for g in range(256):
-                gx, gy = (g % 32) * 9, y0 + (g // 32) * (rows + 1)
-                for yy in range(rows):
-                    bits = data[g * rows + yy]
+                gx, gy = (g % 32) * 9, y0 + (g // 32) * (height + 1)
+                for yy in range(height):
+                    bits = data[g * height + yy]
                     for xx in range(8):
                         if bits & (0x80 >> xx):
                             im.putpixel((gx + xx, gy + yy), (255, 255, 255))
-            y0 += 8 * (rows + 1)
+            y0 += 8 * (height + 1)
     else:
         sys.exit(__doc__)
     out = sys.argv[2] if len(sys.argv) > 2 else f"{cmd}.png"
