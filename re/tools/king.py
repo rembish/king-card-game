@@ -3,6 +3,10 @@
     python3 re/tools/king.py lib [out.png]     contact sheet of all sprites (needs Pillow)
     python3 re/tools/king.py fnt [out.png]     the three fonts (needs Pillow)
     python3 re/tools/king.py ovl               the player registry (passwords not shown)
+    python3 re/tools/king.py extract [DIR]     everything as files (default assets-local/king):
+                                               each sprite a named PNG, the partners' faces one
+                                               by one, the fonts as glyph sheets, the help texts
+                                               in UTF-8
 
 Formats are as read by KING.EXE; see re/NOTES.md for the routines.
 """
@@ -92,8 +96,103 @@ def read_ovl(path: str | None = None) -> list[tuple[str, int, int]]:
     return out
 
 
+SUITS = ["diamonds", "clubs", "spades", "hearts"]
+RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
+PARTNERS = [
+    "vinni-pukh",
+    "krolik",
+    "ia-ia",
+    "pyatachok",
+    "freken-bok",
+    "bagira",
+    "sova",
+    "olya",
+    "mishka",
+    "bashurov",
+    "karlson",
+    "borka",
+]
+# the other sprites, and the colour the game leaves out when it draws them (None: drawn whole)
+OTHERS: dict[int, tuple[str, int | None]] = {
+    54: ("card-back", 2),
+    55: ("hand", 2),
+    57: ("partners-1", None),
+    58: ("partners-2", None),
+    59: ("partners-3", None),
+    60: ("mars", 2),
+    61: ("snickers", 2),
+    62: ("hand-blink-1", 2),
+    63: ("hand-blink-2", 2),
+    64: ("logo-komsomolskaya-pravda", None),
+    65: ("ornament-1", 7),
+    66: ("ornament-2", 7),
+    67: ("logo-king", 7),
+    68: ("partners-grid", None),
+    69: ("banknote", 2),
+    70: ("flame-1", 2),
+    71: ("flame-2", 2),
+}
+
+
+def extract(out: str) -> None:
+    from PIL import Image
+
+    pal = [ega_rgb(v) for v in EGA_REGS]
+    os.makedirs(os.path.join(out, "sprites"), exist_ok=True)
+    os.makedirs(os.path.join(out, "partners"), exist_ok=True)
+    os.makedirs(os.path.join(out, "fonts"), exist_ok=True)
+    n = 0
+    for k, sp in enumerate(read_lib()):
+        if sp is None:
+            continue
+        w, h, rows = sp
+        transparent: int | None
+        if k < 52:
+            name, transparent = f"card-{SUITS[k // 13]}-{RANKS[k % 13]}", 2
+        else:
+            name, transparent = OTHERS.get(k, (f"sprite-{k}", None))
+        im = Image.new("RGBA", (w, h))
+        im.putdata(
+            [
+                (0, 0, 0, 0) if c == transparent else (*pal[c & 15], 255)
+                for row in rows
+                for c in (row[:w] + [0] * max(0, w - len(row)))
+            ]
+        )
+        im.save(os.path.join(out, "sprites", f"{k:02d}-{name}.png"))
+        n += 1
+        if 57 <= k <= 59:  # four faces of 80 x 88 per strip
+            for i in range(4):
+                im.crop((80 * i, 0, 80 * i + 80, 88)).save(
+                    os.path.join(
+                        out, "partners", f"{(k - 57) * 4 + i + 1:02d}-{PARTNERS[(k - 57) * 4 + i]}.png"
+                    )
+                )
+    for height, data in read_fnt():
+        im = Image.new("RGBA", (16 * 9, 16 * (height + 1)), (0, 0, 0, 0))
+        for g in range(256):
+            gx, gy = (g % 16) * 9, (g // 16) * (height + 1)
+            for yy in range(height):
+                bits = data[g * height + yy]
+                for xx in range(8):
+                    if bits & (0x80 >> xx):
+                        im.putpixel((gx + xx, gy + yy), (255, 255, 255, 255))
+        im.save(os.path.join(out, "fonts", f"font-8x{height}-cp866.png"))
+    for name in ("KING.HLP", "KING2.HLP"):
+        path = os.path.join(ORIG, name)
+        if os.path.exists(path):
+            with open(
+                os.path.join(out, name.lower().replace(".hlp", "-help.txt")), "w", encoding="utf-8"
+            ) as f:
+                f.write(open(path, "rb").read().decode("cp866").replace("\r\n", "\n"))
+    print(f"{out}: {n} sprites, 12 partners, 3 fonts, the help texts")
+
+
 def main() -> None:
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "extract":
+        extract(sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "..", "..", "assets-local", "king"))
+        return
     if cmd == "ovl":
         for name, bal, games in read_ovl():
             print(f"{name:12} {bal:8} {games:5}")
