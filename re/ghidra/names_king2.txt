@@ -1,3 +1,116 @@
 # KING2.EXE (full variant, v1.1) symbol names. Same format as names_king.txt.
-# Segments: 1000 main program, 1871 Graph, 1ba3 Crt, 1c05 System, DGROUP 1d2e.
+# Segments: 1000 main program, 1871 Graph, 1b95 Dos, 1ba3 Crt, 1c05 System, DGROUP 1d2e.
 dseg 1d2e
+# ---- main program: startup / top level ----
+1000:6fb4 main                     # program body: load, login, deals until every player has played all 14 games
+1000:0000 quit                     # CloseGraph; Halt
+1000:0039 load_resources           # KING.LIB sprites -> ds:08f2[], KING.FNT -> 3 fonts
+1000:04ba init_graphics            # register EGAVGA, InitGraph(EGA, EGAHi) 640x350 2 pages, palette, mouse
+1000:362a title_and_login          # title, help text, registration, pick 3 partners
+1000:294e title_screen             # newspaper title page; prints the date, KING.HLP text
+1000:27f2 money_rain               # Random(40) columns of falling banknotes
+1000:243f login                    # name, password (3 tries), lookup in KING.OVL
+1000:20fe read_line                # text input with cursor (maxlen, which: 0 name / 1 pw)
+1000:2062 str_eq_nocase            # compare two string[12] with UpCase
+1000:0877 xor_name_password        # XOR 0x1a over the chars of ds:0528 / ds:0535
+1000:2f17 choose_partners          # 4x3 portrait grid, 3 picks -> ds:065c..0660
+# ---- a deal ----
+1000:685c deal                     # build 32-card deck, 1000 random swaps, deal 8 each, sort human hand
+1000:57bc choose_contract          # human: 2x7 grid; computer: hand-strength rule with Random
+1000:67da flash_contract
+1000:6e1d play_deal                # trick loop until ds:073c (items left) is 0
+1000:6c02 play_card                # player p chooses (4 = human) and plays to the table
+1000:1157 human_choose_card        # arrows/mouse select, Space plays; enforces follow suit
+1000:0e88 ai_choose_card           # search depth by trick number, minimax via 0afd
+1000:0afd ai_search                # recursive: try each legal card, score tricks by 0901
+1000:0901 ai_trick_value           # value of one finished trick under the current contract
+1000:1a56 finish_trick             # find winner, score via 1740, animate; returns winner-1
+1000:1740 score_trick              # add price per penalty item to ds:05d2[winner]
+1000:3f36 deal_summary             # add deal scores to totals, show table
+1000:456e game_over                # final table, KING.OVL update, chronicle, top list
+1000:3eb9 wait_space_or_click
+# ---- drawing ----
+1000:70e4 put_sprite               # RLE sprite blit (transparent colour, y, x, dest, sprite)
+1000:0295 draw_text                # bitmap font text (font rows-1 = 5/7/13)
+1000:057b fill_rect_bytes          # fill byte-aligned rectangle with a colour
+1000:0615 copy_rect_bytes          # latch copy between pages (a000:0000 <-> a000:7d00)
+1000:06a9 animate_card             # move a card sprite from one point to another
+1000:159d draw_hand
+1000:1f98 draw_box                 # 3D frame using Graph Bar/Line
+1000:567b draw_counter
+1000:575c draw_counters
+1000:066e flush_input
+# ---- System ----
+1c05:0000 System_init
+1c05:00d8 Halt
+1c05:0207 IOResult
+1c05:020e IOCheck
+1c05:025d Move_rec
+1c05:0329 GetMem
+1c05:062a StrLoad
+1c05:0644 StrStore
+1c05:06b7 StrConcat
+1c05:075a CharToStr
+1c05:07db Delete
+1c05:08df SetIn                    # "x in [set]": ZF result, Ghidra loses it
+1c05:098b Random                   # NextRand; (seed >> 16) mod N
+1c05:09da NextRand                 # RandSeed = RandSeed * 0x08088405 + 1
+1c05:0a12 Randomize                # RandSeed from DOS GetTime (cx:dx)
+1c05:0b31 StrLong                  # Str(longint:width, s)
+1c05:0ffa Assign
+1c05:1028 Reset
+1c05:1031 Rewrite
+1c05:10a9 Close
+1c05:10dd ReadRec
+1c05:10e4 WriteRec
+1c05:1113 BlockRead
+1c05:11dd Eof
+1c05:1237 MoveB
+1c05:125a FillChar
+1c05:126e UpCase
+# ---- Crt / Dos ----
+1ba3:029e Delay
+1ba3:02c6 Sound
+1ba3:02f3 NoSound
+1ba3:02fa KeyPressed
+1ba3:030c ReadKey
+1b95:000b Intr33                   # mouse via Dos.Intr($33, regs at ds:08de)
+1b95:006c GetDate
+# ---- Graph ----
+1871:0a35 CloseGraph
+1871:016f RegisterBGIdriver
+1871:0759 InitGraph
+1871:0d05 SetPalette
+1871:0b9e SetFillStyle
+1871:138e Bar
+1871:1482 SetColor
+1871:0b55 Rectangle
+1871:1346 Line
+# ---- data ----
+ds:0002 card_back                  # sprite index of the card back (54)
+ds:0042 partner_names              # 12 x string[10]
+ds:0418 RandSeed
+ds:0596 mouse_present
+ds:0598 chosen_index
+ds:05a0 player_rec                 # current KING.OVL record (32 bytes)
+ds:0640 item_price                 # per penalty item, negative in deals 0..6
+ds:0642 tricks_taken               # [1..4]
+ds:064a deal_score                 # [1..4]
+ds:0652 total_score                # [1..4]
+ds:068e deck                       # 32 cards, card = suit*13 + rank (rank 5..12 = 7..A)
+ds:06fa hands                      # + 20p: count, cards[1..8], table card [9]
+ds:074a hand_x                     # + 20p: x of each card (human hand also starts here)
+ds:07b0 dealer_counter
+ds:07b2 leader_counter             # (counter % 4) + 1 = player to lead
+ds:07b4 items_left                 # penalty items still in play this deal
+ds:07b6 current_player
+ds:07b8 trick_no
+ds:07ba cards_in_trick
+ds:07bc trick_best                 # winning card + 256 * player
+ds:07be deal_no                    # chosen game 0..13; % 7 = contract, < 7 = don't take
+ds:08c8 last_key
+ds:096a sprites                    # far pointers to KING.LIB entries
+# ---- KING2 only ----
+1000:60cd contract_screen          # draw the grid of played games, choose_contract, show price
+ds:051e games_played               # ds:0500 + 30p + 2g: 1 = player p has played game g (0..13)
+ds:053a games_left                 # ds:051c + 30p: count of unplayed games (starts at 14)

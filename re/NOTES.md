@@ -1,5 +1,10 @@
 # KING.EXE / KING2.EXE reverse-engineering notes
 
+The port follows **KING2.EXE** (full variant). Most of the engine is shared, so the sections below
+describe KING.EXE addresses unless they say otherwise; KING2 differences are at the end. The copy
+protection (Komsomolka subscription index at login) is left out of the port; it draws no random
+numbers.
+
 Addresses are Ghidra `segment:offset` with the image loaded at segment `1000`. Symbol names live
 in `ghidra/names_king.txt` (KING2 names to follow). Items marked **[verify]** still need a check
 (emulator or DOSBox-X).
@@ -163,9 +168,36 @@ password. KING.OVL is a `file of` 32-byte records:
 - `KING.HLP`: CP866 text shown on the title page (author, rules).
 - `re/tools/king.py` decodes all three (and the OVL).
 
-## KING2.EXE (full variant)
+## KING2.EXE (full variant) — the port target
 
-Same engine. Per player a list of the 14 games (`ds:0500 + p*30`, count `ds:051c + p*30` = 14);
-the deal loop runs until all four counts are 0 (56 deals). Before each deal the player whose
-turn it is picks a game it has not played yet (`60cd`, "НЕ БРАТЬ / БРАТЬ" grid for the human,
-"Выбираю..." for the computer). **[todo]** the AI's choice rule and whose turn it is.
+Same engine and the same routines as KING.EXE except the ones below; names in
+`ghidra/names_king2.txt` (DGROUP variables from `ds:051e` up are KING's + 0x78, because KING2
+inserts the 120-byte `games_played` array there). `wait_space_or_click` takes a timeout in 10 ms
+steps (0 = wait for ever).
+
+- Every player has the same 14 games (7 contracts x "не брать"/"брать"); game `g` = `half * 7 +
+  contract`. `games_played` (`ds:0500 + 30p + 2g`) and `games_left` (`ds:051c + 30p`, starts at
+  14). The game ends when all four counts are 0: 56 deals.
+- `deal` (`685c`) shuffles and deals exactly as KING.EXE, then calls `contract_screen` (`60cd`)
+  for the **declarer** `dealer_counter % 4 + 1` (`ds:07b0`), i.e. the player who got the first
+  card; the declarer also leads first. `dealer_counter` grows by 32 per deal plus 1 in `main`,
+  so the declarer rotates 1, 2, 3, 4, 1, ...
+- The choice is made after the deal, with the hand known. `choose_contract(p)` (`57bc`) sets
+  `games_played[p][g] = 1`, `games_left[p]--`, `deal_no` (`ds:07be`) = `g`; `contract_screen`
+  then sets the price and item count exactly as KING's `draw_contract_panel`.
+- Human (p = 4): cursor on the 2x7 grid (Left/Right = half, Up/Down = contract, or the mouse),
+  Space / click accepts only an unplayed game (otherwise a beep). Starts at "не брать / ВЗЯТКИ".
+  No random numbers.
+- Computer: `v = Σ (card % 13) - 68` over its 8 cards (68 = 8 x the average rank 8.5; a weak hand
+  is negative). Then, taking the first group that still has an unplayed game and picking in it
+  by `Random(n)` repeated until it hits an unplayed one:
+  1. if `v < 0`: "не брать" — `{0,1,2}` by `Random(3)` (only if `v > -10`), else `{3..6}` by
+     `Random(4) + 3`, else `{0..6}` by `Random(7)`;
+  2. otherwise (or if nothing was left there) "брать" — `{0,1,2}` by `Random(3)` (only if
+     `v < 10`), else `{3..6}` by `Random(4) + 3`, else `{0..6}` by `Random(7)`;
+  3. otherwise `Random(14)` over all 14 games. Unreachable: the declarer rotates evenly, so a
+     player is declarer exactly 14 times and always has an unplayed game, and step 2's last group
+     finds any unplayed "брать" game. The port keeps it anyway.
+  Then it shows "Выбираю..." and waits `wait_space_or_click(500)` (5 s or a key).
+- Random calls added to the list above: the computer's contract choice. Rejected draws in the
+  `repeat ... until` loops count too.
