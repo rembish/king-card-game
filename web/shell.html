@@ -19,6 +19,8 @@
   button { font: inherit; border: 0; border-radius: 8px; padding: 10px 16px; margin: 6px 8px 0 0; cursor: pointer;
            background: var(--accent); color: #111; font-weight: 600; }
   button.quiet { background: #0f6a0f; color: var(--fg); font-weight: 400; }
+  button[disabled] { opacity: .5; cursor: default; }
+  label.check { display: block; margin-top: 10px; }
   #status { min-height: 1.5em; color: var(--accent); }
   #status.error { color: #ff7a7a; }
   kbd { background: #0f6a0f; border-radius: 4px; padding: 0 5px; font-size: 13px; }
@@ -44,14 +46,18 @@
   <div class="box" id="fetch" hidden>
     <h2>The game's pictures</h2>
     <p>This page contains no part of the original game. It draws with the original's cards,
-      faces and fonts, two files of it: <code>KING.LIB</code> and <code>KING.FNT</code> (90 KB).
-      Choose them from your copy of the game, or the zip of it as it is — for example
-      <code>King_DOS_RU.zip</code> from
-      <a href="https://www.myabandonware.com/game/king-c1a" target="_blank" rel="noopener">MyAbandonware</a>.
-      They stay in this browser's storage and are never sent anywhere.</p>
-    <button id="own">Choose the files or the zip…</button>
-    <input type="file" id="files" multiple accept=".lib,.LIB,.fnt,.FNT,.zip,.ZIP" hidden>
-    <p><small>Or drop them on this page.</small></p>
+      faces and fonts, two files of it: <code>KING.LIB</code> and <code>KING.FNT</code>.</p>
+    <p>It can fetch them for you from the copy on
+      <a href="https://www.myabandonware.com/game/king-c1a" target="_blank" rel="noopener">MyAbandonware</a>
+      (<code>King_DOS_RU.zip</code>, 90 KB, passed through this site because theirs does not let
+      other pages download it). They then stay in this browser's storage. «Кинг» is still
+      Д. Башуров's work: whether to use that copy is your decision.</p>
+    <label class="check"><input type="checkbox" id="agree"> I understand, and choose to download it.</label>
+    <button id="download" disabled>Download and play</button>
+    <p><small>Or use your own copy: choose <code>KING.LIB</code> and <code>KING.FNT</code>, or the
+      zip as it is (or drop them on this page).</small><br>
+      <button class="quiet" id="own">Use my own files…</button>
+      <input type="file" id="files" multiple accept=".lib,.LIB,.fnt,.FNT,.zip,.ZIP" hidden></p>
   </div>
 
   <p id="status"></p>
@@ -157,6 +163,25 @@
       persist(start);
     }).catch(function (e) { status('Could not read those files (' + e.message + ').', true); });
   }
+
+  $('agree').addEventListener('change', function () { $('download').disabled = !this.checked; });
+  $('download').addEventListener('click', function () {
+    $('download').disabled = true;
+    status('Downloading from MyAbandonware…');
+    fetch('/api/original').then(function (r) {
+      if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || r.status); });
+      return r.arrayBuffer();
+    }).then(unzip).then(function (all) {
+      all.forEach(function (p) { if (NEEDED.indexOf(p[0]) >= 0) FS.writeFile('/game/' + p[0], p[1]); });
+      var missing = NEEDED.filter(function (n) { return !have(n); });
+      if (missing.length) throw new Error('not in the zip: ' + missing.join(', '));
+      status('');
+      persist(start);
+    }).catch(function (e) {
+      status('The download failed (' + e.message + '). Try again later, or use your own files.', true);
+      $('download').disabled = false;
+    });
+  });
 
   $('own').addEventListener('click', function () { $('files').click(); });
   $('files').addEventListener('change', function () {
