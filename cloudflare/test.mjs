@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { claim, cleanName, newToken, readToken, record, replay, top, TOKEN_TTL } from './lib/club.js';
+import { allowed, claim, cleanName, newToken, readToken, record, replay, top, TOKEN_TTL } from './lib/club.js';
 
 const here = new URL('.', import.meta.url);
 const core = new WebAssembly.Module(readFileSync(new URL('lib/core.wasm', here)));
@@ -67,4 +67,13 @@ test('balances accumulate and the top is sorted', async () => {
   const t = await top(kv);
   assert.equal(t.members, 2);
   assert.deepEqual(t.top.map((x) => x.name), ['Саша', 'Petya']);
+});
+
+test('rate limits count per kind, address and hour', async () => {
+  const kv = memoryKv(new Map());
+  for (let i = 0; i < 30; i++) assert.equal(await allowed(kv, '1.2.3.4', 0, 'nl', 30), true);
+  assert.equal(await allowed(kv, '1.2.3.4', 0, 'nl', 30), false);
+  assert.equal(await allowed(kv, '1.2.3.4', 0, 'rl', 30), true);
+  assert.equal(await allowed(kv, '5.6.7.8', 0, 'nl', 30), true);
+  assert.equal(await allowed(kv, '1.2.3.4', 3600000, 'nl', 30), true);
 });

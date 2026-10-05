@@ -68,11 +68,11 @@ export function replay(coreModule, seed, polls) {
   return { status: 'ok', totals: [1, 2, 3, 4].map((p) => x.total(p)) };
 }
 
-// at most TOKENS_PER_HOUR games started per address and hour
-export async function allowed(kv, ip, now = Date.now()) {
-  const key = `rl:${ip}:${Math.floor(now / 3600000)}`;
+// at most `limit` requests of a kind per address and hour (games started, names tried)
+export async function allowed(kv, ip, now = Date.now(), kind = 'rl', limit = TOKENS_PER_HOUR) {
+  const key = `${kind}:${ip}:${Math.floor(now / 3600000)}`;
   const n = Number(await kv.get(key)) || 0;
-  if (n >= TOKENS_PER_HOUR) return false;
+  if (n >= limit) return false;
   await kv.put(key, String(n + 1), { expirationTtl: 7200 });
   return true;
 }
